@@ -1,0 +1,14 @@
+[package]
+name = "jagged"
+version = "0.1.0"
+authors = ["Matthieu M. <matthieu.monrocq@gmail.com>"]
+
+[features]
+#   By default, the full-featured API is provided.
+default = ["with-std"]
+
+#   Enables dependending on "std".
+#
+#   Unless activated, this crate is [no_std], with the corresponding loss of
+#   allocation capabilities.
+with-std = []

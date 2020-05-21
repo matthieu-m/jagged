@@ -1,0 +1,1 @@
+This project does not accept external contributions yet, thanks for your interest nonetheless.
