@@ -15,7 +15,6 @@ use super::capacity::{BucketIndex, ElementIndex};
 ///
 /// It never reflects further updates to the `Vector` instance it was created
 /// from.
-#[derive(Clone, Copy)]
 pub struct VectorSnapshot<'a, T> {
     reader: BucketsSharedReader<'a, T>,
 }
@@ -275,6 +274,12 @@ unsafe impl<'a, T: Sync> Send for VectorSnapshot<'a, T> {}
 /// ```
 unsafe impl<'a, T: Sync> Sync for VectorSnapshot<'a, T> {}
 
+impl<'a, T> Clone for VectorSnapshot<'a, T> {
+    fn clone(&self) -> Self { *self }
+}
+
+impl<'a, T> Copy for VectorSnapshot<'a, T> {}
+
 impl<'a, T: fmt::Debug> fmt::Debug for VectorSnapshot<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.reader.debug("VectorSnapshot", f)
@@ -337,6 +342,29 @@ mod tests {
 use vector::Vector;
 
 #[test]
+fn trait_clone() {
+    #[derive(Debug)]
+    struct NotClonable(u8);
+
+    let vec: Vector<_> = Vector::new();
+    vec.push(NotClonable(0));
+
+    let snapshot = vec.snapshot();
+    std::mem::drop(snapshot.clone());
+}
+
+#[test]
+fn trait_copy() {
+    let vec: Vector<_> = Vector::new();
+    vec.push("Hello, World".to_string());
+
+    let snapshot = vec.snapshot();
+    let other = snapshot;
+    std::mem::drop(snapshot);
+    std::mem::drop(other);
+}
+
+#[test]
 fn trait_debug() {
     use std::fmt::Write;
 
@@ -395,6 +423,25 @@ fn trait_partial_ord() {
     assert_eq!(Some(Ordering::Less), partial_cmp(1.0, 2.0));
     assert_eq!(Some(Ordering::Equal), partial_cmp(2.0, 2.0));
     assert_eq!(Some(Ordering::Greater), partial_cmp(3.0, 2.0));
+}
+
+#[test]
+fn trait_ord() {
+    use std::cmp::Ordering;
+
+    fn total_cmp(left: i32, right: i32) -> Ordering {
+        let leftv: Vector<_> = Vector::new();
+        leftv.push(left);
+
+        let rightv: Vector<_> = Vector::new();
+        rightv.push(right);
+
+        leftv.snapshot().cmp(&rightv.snapshot())
+    }
+
+    assert_eq!(Ordering::Less, total_cmp(1, 2));
+    assert_eq!(Ordering::Equal, total_cmp(2, 2));
+    assert_eq!(Ordering::Greater, total_cmp(3, 2));
 }
 
 #[test]

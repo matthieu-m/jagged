@@ -17,7 +17,6 @@ use super::capacity::{Capacity, BucketIndex, ElementIndex, Length};
 /// created from.
 ///
 /// It always reflects updates to the underlying instance.
-#[derive(Clone, Copy)]
 pub struct VectorReader<'a, T> {
     //  Capacity of the first bucket.
     capacity: Capacity,
@@ -264,6 +263,12 @@ unsafe impl<'a, T: Sync> Send for VectorReader<'a, T> {}
 /// ```
 unsafe impl<'a, T: Sync> Sync for VectorReader<'a, T> {}
 
+impl<'a, T> Clone for VectorReader<'a, T> {
+    fn clone(&self) -> Self { *self }
+}
+
+impl<'a, T> Copy for VectorReader<'a, T> {}
+
 impl<'a, T: fmt::Debug> fmt::Debug for VectorReader<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.shared_reader().debug("VectorReader", f)
@@ -282,6 +287,29 @@ impl<'a, T> ops::Index<usize> for VectorReader<'a, T> {
 mod tests {
 
 use vector::Vector;
+
+#[test]
+fn trait_clone() {
+    #[derive(Debug)]
+    struct NotClonable(u8);
+
+    let vec: Vector<_> = Vector::new();
+    vec.push(NotClonable(0));
+
+    let reader = vec.reader();
+    std::mem::drop(reader.clone());
+}
+
+#[test]
+fn trait_copy() {
+    let vec: Vector<_> = Vector::new();
+    vec.push("Hello, World".to_string());
+
+    let reader = vec.reader();
+    let other = reader;
+    std::mem::drop(reader);
+    std::mem::drop(other);
+}
 
 #[test]
 fn trait_debug() {
