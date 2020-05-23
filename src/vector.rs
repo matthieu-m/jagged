@@ -154,6 +154,7 @@
 
 mod buckets;
 mod buckets_api;
+mod capacity;
 mod hooks;
 mod reader;
 mod snapshot;
@@ -169,7 +170,6 @@ pub use self::hooks::DefaultVectorHooks;
 
 use super::allocator;
 use super::atomic;
-use super::capacity;
 use super::failure;
 use super::raw;
 use super::root;

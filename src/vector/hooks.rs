@@ -1,4 +1,4 @@
-//! Hooks of the JaggedVector.
+//! Hooks of the Vector.
 
 use super::allocator;
 

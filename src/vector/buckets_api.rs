@@ -1,4 +1,4 @@
-//! The core Buckets of the vector.
+//! The high-level API of the Buckets of the vector.
 
 pub use super::buckets::BucketArray;
 
@@ -103,11 +103,8 @@ impl<'a, T: fmt::Debug> BucketsSharedReader<'a, T> {
         write!(f, "{} {{ capacity: {}, length: {}, buckets: [",
             name, self.capacity(), self.len())?;
 
-        let mut first = true;
-        for bucket in self.iter_buckets() {
-            if first {
-                first = false;
-            } else {
+        for (index, bucket) in self.iter_buckets().enumerate() {
+            if index != 0 {
                 write!(f, ", ")?;
             }
             write!(f, "{:?}", bucket)?;
@@ -280,7 +277,7 @@ impl<'a, T: PartialOrd> PartialOrd for BucketsSharedReader<'a, T> {
     }
 }
 
-impl<'a, 'b, T> iter::IntoIterator for &'b BucketsSharedReader<'a, T> {
+impl<'a, T> iter::IntoIterator for BucketsSharedReader<'a, T> {
     type Item = &'a T;
     type IntoIter = ElementIterator<'a, T>;
 
@@ -488,8 +485,8 @@ pub struct ElementIterator<'a, T> {
 
 impl<'a, T> ElementIterator<'a, T> {
     //  Creates an instance of ElementIterator.
-    fn create(reader: &BucketsSharedReader<'a, T>) -> Self {
-        ElementIterator { buckets: *reader, index: ElementIndex(0) }
+    fn create(reader: BucketsSharedReader<'a, T>) -> Self {
+        ElementIterator { buckets: reader, index: ElementIndex(0) }
     }
 }
 

@@ -2,12 +2,12 @@
 
 #[cfg(not(feature = "with-std"))]
 pub use core::{
-    alloc, cell, cmp, fmt, hash, iter, marker, mem, ops, ptr, result, slice, sync,
+    alloc, borrow, cell, cmp, fmt, hash, hint, iter, marker, mem, ops, ptr, result, slice, sync,
 };
 
 #[cfg(feature = "with-std")]
 pub use std::{
-    alloc, cell, cmp, fmt, hash, iter, marker, mem, ops, ptr, result, slice, sync,
+    alloc, borrow, cell, cmp, fmt, hash, hint, iter, marker, mem, ops, ptr, result, slice, sync,
 };
 
 #[cfg(feature = "with-std")]

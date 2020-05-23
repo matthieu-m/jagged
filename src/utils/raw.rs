@@ -12,6 +12,9 @@ use super::root::{cell, mem, ptr};
 pub struct Raw<T>(cell::UnsafeCell<mem::MaybeUninit<T>>);
 
 impl<T> Raw<T> {
+    //  Creates a new instance.
+    pub fn new() -> Self { Raw(cell::UnsafeCell::new(mem::MaybeUninit::uninit())) }
+
     //  Gets a reference to the value.
     //
     //  #   Safety
@@ -69,4 +72,8 @@ impl<T> Raw<T> {
         //  -   Exclusive access, per &mut self.
         unsafe { &mut *self.0.get() }
     }
+}
+
+impl<T> Default for Raw<T> {
+    fn default() -> Self { Self::new() }
 }

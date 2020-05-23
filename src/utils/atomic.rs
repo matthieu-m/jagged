@@ -23,3 +23,5 @@ macro_rules! atomic {
 }
 
 atomic!{ AcqRelUsize, AtomicUsize, usize, Ordering::Acquire, Ordering::Release }
+
+atomic!{ RelaxedUsize, AtomicUsize, usize, Ordering::Relaxed, Ordering::Relaxed }

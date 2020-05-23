@@ -241,7 +241,7 @@ impl<'a, T> VectorSnapshot<'a, T> {
 /// ```
 unsafe impl<'a, T: Sync> Send for VectorSnapshot<'a, T> {}
 
-/// A `VectorSnapshot<T>` can be shared across threads whenver `&[T]` can.
+/// A `VectorSnapshot<T>` can be shared across threads whenever `&[T]` can.
 ///
 /// #   Example of Sync.
 ///

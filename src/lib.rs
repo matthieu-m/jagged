@@ -14,11 +14,12 @@
 
 pub mod allocator;
 pub mod failure;
+pub mod hashmap;
 pub mod vector;
 
+mod hashcore;
 mod utils;
 
 use self::utils::atomic;
-use self::utils::capacity;
 use self::utils::raw;
 use self::utils::root;

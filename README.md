@@ -2,8 +2,22 @@
 
 Jagged is a collection of wait-free concurrent data-structures.
 
-The data-structures in this collection exploit the same central idea, the jagged
-array, and as a result exhibit the same guarantees, and limitations.
+The data-structures in this collection exploit the same central idea, the
+jagged array, and as a result exhibit the same guarantees, and limitations.
+
+##  Goals/Non-Goals
+
+What Jagged intends to offer:
+
+-   A convenient & safe API.
+-   No synchronization between readers.
+-   Minimum synchronization overhead between reader and writer.
+-   Maximum portability -- including minimum dependencies.
+
+What Jagged does NOT intend to offer:
+
+-   A hotbed of experimental features. No nightly here, and thus no const
+    generics.
 
 ##  Safety.
 
@@ -16,8 +30,9 @@ Subjective:
 
 Objective:
 
--   Not audited.
+-   Not completely tested.
 -   Not fuzzed.
+-   Not audited.
 -   Not proven.
 
 Use at your own risks, reviews are welcome.
@@ -55,6 +70,25 @@ Those properties are supported by _memory stability_. Once inserted into a
 Jagged data-structure, an element will never move. This allows keeping
 references to the element while simultaneously inserting more elements.
 
+##  Portability
+
+The Jagged library intends to be maximally portable, whilst still being
+convenient to use.
+
+In order to so, two compilation modes are supported:
+
+-   By default, the Jagged library depends on `std`.
+-   By NOT specifying the `with-std` feature, the Jagged library only depends
+    on `core`.
+
+*Note: ideally, it would also optionally depend on `alloc`, unfortunately this
+crate is still nightly-only.*
+
+The Jagged library has not other dependencies, and intends to remain
+lightweight.
+
+It may acquire dev-dependencies in the future.
+
 ##  Jagged Array.
 
 Memory stability is a key concept for efficient sharing. While wrapping an
@@ -84,6 +118,9 @@ That is, the capacities of the inner arrays follow the pattern
 
 An `N` of 22 means that the maximum capacity that can be achieved is `2**21`
 times the capacity of the first inner array, or about 2 millions.
+
+The exact value of `N` depends on the data-structure, and is an implementation
+detail.
 
 ##  FAQ
 
