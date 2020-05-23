@@ -1,6 +1,6 @@
 //! The Vector
 
-use super::root::{fmt, ops};
+use super::root::{fmt, iter, ops};
 
 use super::{VectorReader, VectorSnapshot};
 
@@ -756,6 +756,17 @@ impl<T: fmt::Debug, H: VectorHooks> fmt::Debug for Vector<T, H> {
     }
 }
 
+impl<T, H: VectorHooks + Default> iter::FromIterator<T> for Vector<T, H> {
+    fn from_iter<C>(collection: C) -> Self
+    where
+        C: IntoIterator<Item = T>
+    {
+        let result: Vector<_, _> = Vector::with_hooks(H::default());
+        result.extend(collection);
+        result
+    }
+}
+
 impl<T, H: VectorHooks> ops::Index<usize> for Vector<T, H> {
     type Output = T;
 
@@ -804,6 +815,13 @@ fn trait_debug() {
         "Vector { capacity: 8, length: 5, buckets: [[1], [2], [3, 4], [5]] }",
         sink
     );
+}
+
+#[test]
+fn trait_from_iterator() {
+    let vec: Vector<_> = [1, 2, 3, 4, 5].iter().copied().collect();
+
+    assert_eq!(5, vec.len());
 }
 
 }   //  mod tests

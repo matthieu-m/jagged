@@ -1,6 +1,6 @@
 //! The HashMap
 
-use super::root::{borrow, fmt, hash, hint};
+use super::root::{borrow, fmt, hash, hint, iter};
 
 use super::{HashMapReader, HashMapSnapshot};
 
@@ -784,6 +784,21 @@ impl<K: fmt::Debug, V: fmt::Debug, H: HashHooks> fmt::Debug for HashMap<K, V, H>
     }
 }
 
+impl<K, V, H> iter::FromIterator<(K, V)> for HashMap<K, V, H>
+where
+    K: Eq + hash::Hash,
+    H: HashHooks + Default,
+{
+    fn from_iter<C>(collection: C) -> Self
+    where
+        C: IntoIterator<Item = (K, V)>
+    {
+        let result: HashMap<_, _, _> = HashMap::with_hooks(H::default());
+        result.extend(collection);
+        result
+    }
+}
+
 #[cold]
 #[inline(never)]
 fn panic_from_failure(failure: Failure) {
@@ -816,6 +831,14 @@ fn trait_debug() {
 
     assert!(sink.starts_with("HashMap { capacity: 16, length: 5, buckets: [["));
     assert!(sink.ends_with("]] }"));
+}
+
+#[test]
+fn trait_from_iterator() {
+    let map: HashMap<_, _> =
+        [(1, 1), (2, 2), (3, 3), (4, 4), (5, 5)].iter().copied().collect();
+
+    assert_eq!(5, map.len());
 }
 
 }   //  mod tests

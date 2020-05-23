@@ -288,6 +288,13 @@ impl<T> BucketArray<T> {
         C: IntoIterator<Item = T>,
         A: Allocator,
     {
+        //  In a typical Vec<_> implementation, the collection would be queried
+        //  to ascertain its minimal length, in an attempt to minimize the
+        //  number of re-allocations.
+        //
+        //  There is no re-allocation, ever, in Vector, so this step is
+        //  unnecessary.
+
         let mut length = length;
 
         //  TODO: optimize to avoid repeated computations to obtain the current
@@ -1332,10 +1339,5 @@ fn bucket_array_clear_all() {
 
     assert_eq!(0, count.get());
 }
-
-//  TODO:
-//  -   Test when allocation/deallocation occurs.
-//  -   Test BucketArray.
-//  -   Ensure Errors are covered.
 
 }

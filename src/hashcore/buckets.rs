@@ -301,6 +301,13 @@ impl<T> BucketArray<T> {
         T::Key: Eq + hash::Hash,
         H: Allocator + hash::BuildHasher,
     {
+        //  In a typical HashMap/Set implementation, the collection would be
+        //  queried to ascertain its minimal length, in an attempt to minimize
+        //  the number of re-allocations.
+        //
+        //  There is no re-allocation, ever, in Vector, so this step is
+        //  unnecessary.
+
         let mut size = size;
 
         //  TODO: optimize to avoid repeated computations to obtain the current

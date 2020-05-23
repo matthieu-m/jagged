@@ -1,6 +1,6 @@
 //! The HashSet
 
-use super::root::{borrow, fmt, hash, hint};
+use super::root::{borrow, fmt, hash, hint, iter};
 
 use super::{HashSetReader, HashSetSnapshot};
 
@@ -719,6 +719,21 @@ impl<T: fmt::Debug, H: HashHooks> fmt::Debug for HashSet<T, H> {
     }
 }
 
+impl<T, H> iter::FromIterator<T> for HashSet<T, H>
+where
+    T: Eq + hash::Hash,
+    H: HashHooks + Default,
+{
+    fn from_iter<C>(collection: C) -> Self
+    where
+        C: IntoIterator<Item = T>
+    {
+        let result: HashSet<_, _> = HashSet::with_hooks(H::default());
+        result.extend(collection);
+        result
+    }
+}
+
 #[cold]
 #[inline(never)]
 fn panic_from_failure(failure: Failure) {
@@ -751,6 +766,13 @@ fn trait_debug() {
 
     assert!(sink.starts_with("HashSet { capacity: 16, length: 5, buckets: [["));
     assert!(sink.ends_with("]] }"));
+}
+
+#[test]
+fn trait_from_iterator() {
+    let set: HashSet<_> = [1, 2, 3, 4, 5].iter().copied().collect();
+
+    assert_eq!(5, set.len());
 }
 
 }   //  mod tests
