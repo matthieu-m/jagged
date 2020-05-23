@@ -1,8 +1,8 @@
-//! The HashMap
+//! The HashSet
 
 use super::root::{borrow, fmt, hash, hint};
 
-use super::{HashMapReader, HashMapSnapshot};
+use super::{HashSetReader, HashSetSnapshot};
 
 use super::atomic::AcqRelUsize;
 use super::entry::Entry;
@@ -20,29 +20,29 @@ use super::hashcore::DefaultHashHooks;
 //  Public Interface
 //
 
-/// `HashMap`
+/// `HashSet`
 ///
 /// Limitation: the maximum number of buckets cannot be specified, due to the
 ///             lack of const generics.
 #[cfg(not(feature = "with-std"))]
-pub struct HashMap<K, V, H: HashHooks> {
+pub struct HashSet<T, H: HashHooks> {
     hooks: H,
     capacity: Capacity,
     size: AcqRelUsize,
-    buckets: BucketArray<Entry<K, V>>,
+    buckets: BucketArray<Entry<T>>,
 }
 
-/// `HashMap`
+/// `HashSet`
 ///
 /// Limitation: the maximum number of buckets cannot be specified, due to the
 ///             lack of const generics.
 #[cfg(feature = "with-std")]
-pub struct HashMap<K, V, H: HashHooks = DefaultHashHooks> {
-    //  Hooks of the HashMap.
+pub struct HashSet<T, H: HashHooks = DefaultHashHooks> {
+    //  Hooks of the HashSet.
     hooks: H,
     //  Capacity of the first bucket.
     capacity: Capacity,
-    //  The number of elements in the map:
+    //  The number of elements in the set:
     //
     //  -   Should be loaded before reading any element.
     //  -   Should be stored into after writing any element.
@@ -50,11 +50,11 @@ pub struct HashMap<K, V, H: HashHooks = DefaultHashHooks> {
     //  The Acquire/Release semantics are used to guarantee that when an element
     //  is read it reflects the last write.
     size: AcqRelUsize,
-    buckets: BucketArray<Entry<K, V>>,
+    buckets: BucketArray<Entry<T>>,
 }
 
-impl<K, V, H: HashHooks + Default> HashMap<K, V, H> {
-    /// Creates a new instance of the `HashMap` with a maximum capacity of 2 for
+impl<T, H: HashHooks + Default> HashSet<T, H> {
+    /// Creates a new instance of the `HashSet` with a maximum capacity of 2 for
     /// the first bucket.
     ///
     /// No memory is allocated.
@@ -62,16 +62,16 @@ impl<K, V, H: HashHooks + Default> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<i32, i32> = HashMap::new();
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<i32> = HashSet::new();
     ///
-    /// assert_eq!(0, map.len());
-    /// assert_eq!(0, map.capacity());
-    /// assert_eq!(512 * 1024, map.max_capacity());
+    /// assert_eq!(0, set.len());
+    /// assert_eq!(0, set.capacity());
+    /// assert_eq!(512 * 1024, set.max_capacity());
     /// ```
     pub fn new() -> Self { Self::with_hooks(H::default()) }
 
-    /// Creates a new instace of the `HashMap` with a capacity of at least
+    /// Creates a new instace of the `HashSet` with a capacity of at least
     /// `capacity_of_0` for the first bucket.
     ///
     /// If `capacity_of_0` is not a power of 2, it is rounded up.
@@ -86,20 +86,20 @@ impl<K, V, H: HashHooks + Default> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<i32, i32> = HashMap::with_max_capacity(4);
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<i32> = HashSet::with_max_capacity(4);
     ///
-    /// assert_eq!(0, map.len());
-    /// assert_eq!(0, map.capacity());
-    /// assert_eq!(1024 * 1024, map.max_capacity());
+    /// assert_eq!(0, set.len());
+    /// assert_eq!(0, set.capacity());
+    /// assert_eq!(1024 * 1024, set.max_capacity());
     /// ```
     pub fn with_max_capacity(capacity_of_0: usize) -> Self {
         Self::with_max_capacity_and_hooks(capacity_of_0, H::default())
     }
 }
 
-impl<K, V, H: HashHooks> HashMap<K, V, H> {
-    /// Creates a new instance of the `HashMap` with a capacity of 2 for
+impl<T, H: HashHooks> HashSet<T, H> {
+    /// Creates a new instance of the `HashSet` with a capacity of 2 for
     /// the first bucket.
     ///
     /// No memory is allocated.
@@ -107,18 +107,18 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::{HashMap, DefaultHashHooks};
-    /// let map: HashMap<i32, i32> = HashMap::with_hooks(DefaultHashHooks::default());
+    /// #   use jagged::hashset::{HashSet, DefaultHashHooks};
+    /// let set: HashSet<i32> = HashSet::with_hooks(DefaultHashHooks::default());
     ///
-    /// assert_eq!(0, map.len());
-    /// assert_eq!(0, map.capacity());
-    /// assert_eq!(512 * 1024, map.max_capacity());
+    /// assert_eq!(0, set.len());
+    /// assert_eq!(0, set.capacity());
+    /// assert_eq!(512 * 1024, set.max_capacity());
     /// ```
     pub fn with_hooks(hooks: H) -> Self {
         Self::with_max_capacity_and_hooks(2, hooks)
     }
 
-    /// Creates a new instace of the `HashMap` with a capacity of at least
+    /// Creates a new instace of the `HashSet` with a capacity of at least
     /// `capacity_of_0` for the first bucket.
     ///
     /// If `capacity_of_0` is not a power of 2, it is rounded up.
@@ -133,72 +133,72 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::{HashMap, DefaultHashHooks};
+    /// #   use jagged::hashset::{HashSet, DefaultHashHooks};
     /// let hooks = DefaultHashHooks::default();
-    /// let map: HashMap<i32, i32> = HashMap::with_max_capacity_and_hooks(4, hooks);
+    /// let set: HashSet<i32> = HashSet::with_max_capacity_and_hooks(4, hooks);
     ///
-    /// assert_eq!(0, map.len());
-    /// assert_eq!(0, map.capacity());
-    /// assert_eq!(1024 * 1024, map.max_capacity());
+    /// assert_eq!(0, set.len());
+    /// assert_eq!(0, set.capacity());
+    /// assert_eq!(1024 * 1024, set.max_capacity());
     /// ```
     pub fn with_max_capacity_and_hooks(capacity_of_0: usize, hooks: H)
         -> Self
     {
         Self {
             hooks,
-            capacity: BucketArray::<Entry<K, V>>::capacity(capacity_of_0),
+            capacity: BucketArray::<Entry<T>>::capacity(capacity_of_0),
             size: AcqRelUsize::new(0),
             buckets: Default::default(),
         }
     }
 }
 
-impl<K, V, H: HashHooks> HashMap<K, V, H> {
-    /// Creates a `HashMapReader`.
+impl<T, H: HashHooks> HashSet<T, H> {
+    /// Creates a `HashSetReader`.
     ///
-    /// A `HashMapReader` is a read-only view of the `HashMap` instance it is
+    /// A `HashSetReader` is a read-only view of the `HashSet` instance it is
     /// created from which it reflects updates.
     ///
     /// Reflecting updates comes at the small synchronization cost of having to
     /// read one atomic variable for each access.
     ///
-    /// If synchronization is unnecessary, consider using a `HashMapSnapshot`
+    /// If synchronization is unnecessary, consider using a `HashSetSnapshot`
     /// instead.
     ///
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
-    /// let reader = map.reader();
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<_> = HashSet::new();
+    /// let reader = set.reader();
     ///
-    /// map.insert(1, false);
-    /// assert_eq!(Some(&false), reader.get(&1));
+    /// set.insert(1);
+    /// assert_eq!(Some(&1), reader.get(&1));
     /// ```
-    pub fn reader(&self) -> HashMapReader<'_, K, V, H> {
-        HashMapReader::new(&self.buckets, &self.hooks, &self.size, self.capacity)
+    pub fn reader(&self) -> HashSetReader<'_, T, H> {
+        HashSetReader::new(&self.buckets, &self.hooks, &self.size, self.capacity)
     }
 
-    /// Creates a `HashMapSnapshot`.
+    /// Creates a `HashSetSnapshot`.
     ///
-    /// A `HashMapSnapshot` is a read-only view of the `HashMap` instance it is
+    /// A `HashSetSnapshot` is a read-only view of the `HashSet` instance it is
     /// created from which it does not reflect updates. Once created, it is
     /// immutable.
     ///
-    /// A `HashMapSnapshot` can also be created from a `HashMapReader`.
+    /// A `HashSetSnapshot` can also be created from a `HashSetReader`.
     ///
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
-    /// let snapshot = map.snapshot();
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<_> = HashSet::new();
+    /// let snapshot = set.snapshot();
     ///
-    /// map.insert(1, false);
+    /// set.insert(1);
     /// assert_eq!(None, snapshot.get(&1));
     /// ```
-    pub fn snapshot(&self) -> HashMapSnapshot<'_, K, V, H> {
-        HashMapSnapshot::new(self.shared_reader())
+    pub fn snapshot(&self) -> HashSetSnapshot<'_, T, H> {
+        HashSetSnapshot::new(self.shared_reader())
     }
 
     /// Returns whether the instance contains any element, or not.
@@ -206,12 +206,12 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
-    /// assert!(map.is_empty());
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<_> = HashSet::new();
+    /// assert!(set.is_empty());
     ///
-    /// map.insert(1, 1);
-    /// assert!(!map.is_empty());
+    /// set.insert(1);
+    /// assert!(!set.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool { self.shared_reader().is_empty() }
 
@@ -220,12 +220,12 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
-    /// assert_eq!(0, map.len());
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<_> = HashSet::new();
+    /// assert_eq!(0, set.len());
     ///
-    /// map.insert(1, 2);
-    /// assert_eq!(1, map.len());
+    /// set.insert(1);
+    /// assert_eq!(1, set.len());
     /// ```
     pub fn len(&self) -> usize { self.shared_reader().len() }
 
@@ -234,12 +234,12 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
-    /// assert_eq!(0, map.capacity());
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<_> = HashSet::new();
+    /// assert_eq!(0, set.capacity());
     ///
-    /// map.extend([(1, 1), (2, 2), (3, 3), (4, 4), (5, 5)].iter().copied());
-    /// assert_eq!(8, map.capacity());
+    /// set.extend([1, 2, 3, 4, 5].iter().copied());
+    /// assert_eq!(8, set.capacity());
     /// ```
     pub fn capacity(&self) -> usize {
         let number_buckets = self.buckets.number_buckets();
@@ -261,9 +261,9 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<i32, i32> = HashMap::new();
-    /// assert_eq!(512 * 1024, map.max_capacity());
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<i32> = HashSet::new();
+    /// assert_eq!(512 * 1024, set.max_capacity());
     /// ```
     pub fn max_capacity(&self) -> usize {
         let capacity = self.shared_reader().max_capacity();
@@ -277,12 +277,12 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
-    /// assert_eq!(0, map.number_buckets());
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<_> = HashSet::new();
+    /// assert_eq!(0, set.number_buckets());
     ///
-    /// map.extend([(1, 1), (2, 2), (3, 3), (4, 4), (5, 5)].iter().copied());
-    /// assert_eq!(4, map.number_buckets());
+    /// set.extend([1, 2, 3, 4, 5].iter().copied());
+    /// assert_eq!(4, set.number_buckets());
     /// ```
     pub fn number_buckets(&self) -> usize {
         self.shared_reader().number_buckets()
@@ -300,103 +300,53 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<i32, i32> = HashMap::new();
-    /// assert_eq!(20, map.max_buckets());
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<i32> = HashSet::new();
+    /// assert_eq!(20, set.max_buckets());
     ///
-    /// let map: HashMap<i32, i32> = HashMap::with_max_capacity(usize::MAX / 8);
-    /// assert_eq!(3, map.max_buckets());
+    /// let set: HashSet<i32> = HashSet::with_max_capacity(usize::MAX / 8);
+    /// assert_eq!(3, set.max_buckets());
     /// ```
     pub fn max_buckets(&self) -> usize { self.shared_reader().max_buckets() }
 
-    /// Returns `true` if the map contains a value for the specified key.
+    /// Returns `true` if the set contains the value.
     ///
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
-    /// map.insert(1, false);
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<_> = HashSet::new();
+    /// set.insert(1);
     ///
-    /// assert!(map.contains_key(&1));
-    /// assert!(!map.contains_key(&0));
+    /// assert!(set.contains(&1));
+    /// assert!(!set.contains(&0));
     /// ```
-    pub fn contains_key<Q>(&self, key: &Q) -> bool
+    pub fn contains<Q>(&self, value: &Q) -> bool
     where
-        K: borrow::Borrow<Q>,
+        T: borrow::Borrow<Q>,
         Q: ?Sized + Eq + hash::Hash,
     {
-        self.shared_reader().contains_key(key)
+        self.shared_reader().contains_key(value)
     }
 
-    /// Returns a reference to the value corresponding to the key, if any.
+    /// Returns a reference to the value, if any.
     ///
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
-    /// map.insert(1, false);
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<_> = HashSet::new();
+    /// set.insert(1);
     ///
-    /// assert_eq!(Some(&false), map.get(&1));
-    /// assert_eq!(None, map.get(&0));
+    /// assert_eq!(Some(&1), set.get(&1));
+    /// assert_eq!(None, set.get(&0));
     /// ```
-    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    pub fn get<Q>(&self, value: &Q) -> Option<&T>
     where
-        K: borrow::Borrow<Q>,
+        T: borrow::Borrow<Q>,
         Q: ?Sized + Eq + hash::Hash,
     {
-        self.shared_reader().get(key).map(|e| &e.value)
-    }
-
-    /// Returns the key-value pair corresponding to the key, if any.
-    ///
-    /// #   Example
-    ///
-    /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
-    /// map.insert(1, false);
-    ///
-    /// assert_eq!(Some((&1, &false)), map.get_key_value(&1));
-    /// assert_eq!(None, map.get(&0));
-    /// ```
-    pub fn get_key_value<Q>(&self, key: &Q) -> Option<(&K, &V)>
-    where
-        K: borrow::Borrow<Q>,
-        Q: ?Sized + Eq + hash::Hash,
-    {
-        self.shared_reader().get(key).map(|e| (&e.key, &e.value))
-    }
-
-    /// Returns a reference to the ith element, if any.
-    ///
-    /// #   Example
-    ///
-    /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let mut map: HashMap<_, _> = HashMap::new();
-    /// map.insert(1, false);
-    ///
-    /// if let Some(e) = map.get_mut(&1) {
-    ///     *e = true;
-    /// }
-    /// assert_eq!(Some(&true), map.get(&1));
-    /// ```
-    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
-    where
-        K: borrow::Borrow<Q>,
-        Q: ?Sized + Eq + hash::Hash,
-    {
-        let size = Size(self.size.load());
-        //  Safety:
-        //  -   `size` is less than the current size of the map.
-        //  -   `capacity` matches the capacity of the map.
-        let entry = unsafe {
-            self.buckets.get_mut(key, size, self.capacity, &self.hooks)
-        };
-
-        entry.map(|e| &mut e.value)
+        self.shared_reader().get(value).map(|e| &e.0)
     }
 
     /// Clears the instance.
@@ -409,13 +359,13 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let mut map: HashMap<_, _> = HashMap::new();
-    /// map.extend([(1, false), (2, true), (3, false)].iter().copied());
+    /// #   use jagged::hashset::HashSet;
+    /// let mut set: HashSet<_> = HashSet::new();
+    /// set.extend([1, 2, 3].iter().copied());
     ///
-    /// map.clear();
-    /// assert_eq!(0, map.len());
-    /// assert_eq!(4, map.capacity());
+    /// set.clear();
+    /// assert_eq!(0, set.len());
+    /// assert_eq!(4, set.capacity());
     /// ```
     pub fn clear(&mut self) {
         let size = Size(self.size.load());
@@ -441,15 +391,15 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
-    /// map.reserve(16);
-    /// assert_eq!(16, map.capacity());
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<_> = HashSet::new();
+    /// set.reserve(16);
+    /// assert_eq!(16, set.capacity());
     ///
-    /// map.extend([(1, false), (2, true), (3, false)].iter().copied());
+    /// set.extend([1, 2, 3].iter().copied());
     ///
-    /// map.shrink();
-    /// assert_eq!(4, map.capacity());
+    /// set.shrink();
+    /// assert_eq!(4, set.capacity());
     /// ```
     pub fn shrink(&self) {
         //  Safety:
@@ -479,32 +429,32 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     ///
     /// ```
     /// #   use jagged::failure::Failure;
-    /// #   use jagged::hashmap::HashMap;
+    /// #   use jagged::hashset::HashSet;
     /// //  BytesOverflow signals that the size of the bucket to allocate, in
     /// //  bytes, overflows `usize`.
-    /// let map: HashMap<i32, i32> = HashMap::with_max_capacity(usize::MAX / 2);
-    /// assert_eq!(Err(Failure::BytesOverflow), map.try_reserve(1));
+    /// let set: HashSet<i32> = HashSet::with_max_capacity(usize::MAX / 2);
+    /// assert_eq!(Err(Failure::BytesOverflow), set.try_reserve(1));
     ///
     /// //  ElementsOverflow signals that the total number of elements overflows
     /// //  `usize`.
-    /// let map: HashMap<_, _> = HashMap::new();
-    /// map.insert(1, false);
-    /// assert_eq!(Err(Failure::ElementsOverflow), map.try_reserve(usize::MAX));
+    /// let set: HashSet<_> = HashSet::new();
+    /// set.insert(1);
+    /// assert_eq!(Err(Failure::ElementsOverflow), set.try_reserve(usize::MAX));
     ///
     /// //  OutOfBuckets signals that the maximum number of buckets has been
     /// //  reached, and no further bucket can be reserved.
-    /// let map: HashMap<i32, i32> = HashMap::new();
-    /// assert_eq!(Err(Failure::OutOfBuckets), map.try_reserve(usize::MAX));
+    /// let set: HashSet<i32> = HashSet::new();
+    /// assert_eq!(Err(Failure::OutOfBuckets), set.try_reserve(usize::MAX));
     ///
     /// //  OutOfMemory signals that the allocator failed to provide the
     /// //  requested memory; here because the amount requested is too large.
-    /// let map: HashMap<i32, i32> = HashMap::with_max_capacity(usize::MAX / 32);
-    /// assert_eq!(Err(Failure::OutOfMemory), map.try_reserve(1));
+    /// let set: HashSet<i32> = HashSet::with_max_capacity(usize::MAX / 32);
+    /// assert_eq!(Err(Failure::OutOfMemory), set.try_reserve(1));
     ///
     /// //  Fortunately, in general, `try_reserve` should succeed.
-    /// let map: HashMap<i32, i32> = HashMap::new();
-    /// assert_eq!(Ok(()), map.try_reserve(6));
-    /// assert_eq!(8, map.capacity());
+    /// let set: HashSet<i32> = HashSet::new();
+    /// assert_eq!(Ok(()), set.try_reserve(6));
+    /// assert_eq!(8, set.capacity());
     /// ```
     pub fn try_reserve(&self, extra: usize) -> Result<()> {
         //  Safety:
@@ -529,18 +479,18 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<i32, i32> = HashMap::new();
-    /// map.reserve(6);
-    /// assert_eq!(8, map.capacity());
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<i32> = HashSet::new();
+    /// set.reserve(6);
+    /// assert_eq!(8, set.capacity());
     /// ```
     pub fn reserve(&self, extra: usize) {
         self.try_reserve(extra).unwrap_or_else(panic_from_failure);
     }
 
-    /// Inserts a key-value pair into the map.
+    /// Inserts a value into the set.
     ///
-    /// If the key already exists, returns both key and value.
+    /// If the value already exists, returns it.
     ///
     /// #   Errors
     ///
@@ -552,29 +502,29 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<_> = HashSet::new();
     ///
-    /// assert_eq!(Ok(None), map.try_insert(3, false));
-    /// assert_eq!(Ok(Some((3, true))), map.try_insert(3, true));
+    /// assert_eq!(Ok(None), set.try_insert(3));
+    /// assert_eq!(Ok(Some(3)), set.try_insert(3));
     ///
-    /// assert_eq!(Some(&false), map.get(&3));
+    /// assert_eq!(Some(&3), set.get(&3));
     /// ```
-    pub fn try_insert(&self, key: K, value: V) -> Result<Option<(K, V)>>
+    pub fn try_insert(&self, value: T) -> Result<Option<T>>
     where
-        K: Eq + hash::Hash,
+        T: Eq + hash::Hash,
     {
         //  Safety:
         //  -   `size` does not increase between creation and use.
         let (size, entry) = unsafe { self.shared_writer() }
-            .try_insert(Entry{ key, value })?;
+            .try_insert(Entry(value))?;
 
         self.size.store(size.0);
 
-        Ok(entry.map(|e| (e.key, e.value)))
+        Ok(entry.map(|e| (e.0)))
     }
 
-    /// Inserts a key-value pair into the map.
+    /// Inserts a value into the set.
     ///
     /// Calling this method is equivalent to calling `try_insert` and panicking on
     /// error.
@@ -586,19 +536,19 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<_> = HashSet::new();
     ///
-    /// assert_eq!(None, map.insert(3, false));
-    /// assert_eq!(Some((3, true)), map.insert(3, true));
+    /// assert_eq!(None, set.insert(3));
+    /// assert_eq!(Some(3), set.insert(3));
     ///
-    /// assert_eq!(Some(&false), map.get(&3));
+    /// assert_eq!(Some(&3), set.get(&3));
     /// ```
-    pub fn insert(&self, key: K, value: V) -> Option<(K, V)>
+    pub fn insert(&self, value: T) -> Option<T>
     where
-        K: Eq + hash::Hash,
+        T: Eq + hash::Hash,
     {
-        match self.try_insert(key, value) {
+        match self.try_insert(value) {
             Ok(result) => result,
             Err(error) => {
                 panic_from_failure(error);
@@ -609,10 +559,10 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
         }
     }
 
-    /// Inserts multiple key-value pairs in the map.
+    /// Inserts multiple values in the set.
     ///
-    /// If a key-value pair cannot be inserted because the key is already
-    /// present, it is dropped.
+    /// If a value cannot be inserted because it is already present, it is
+    /// dropped.
     ///
     /// #   Errors
     ///
@@ -625,18 +575,18 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
-    /// assert_eq!(Ok(()), map.try_extend([(1, 1), (2, 2), (3, 3)].iter().copied()));
-    /// assert_eq!(3, map.len());
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<_> = HashSet::new();
+    /// assert_eq!(Ok(()), set.try_extend([1, 2, 3].iter().copied()));
+    /// assert_eq!(3, set.len());
     /// ```
     pub fn try_extend<C>(&self, collection: C) -> Result<()>
     where
-        C: IntoIterator<Item = (K, V)>,
-        K: Eq + hash::Hash,
+        C: IntoIterator<Item = T>,
+        T: Eq + hash::Hash,
     {
         let collection = collection.into_iter();
-        let collection = collection.map(|(key, value)| Entry { key, value });
+        let collection = collection.map(|value| Entry(value));
 
         //  Safety:
         //  -   `size` does not increase between creation and use.
@@ -652,36 +602,36 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
         }
     }
 
-    /// Inserts multiple key-value pairs in the map.
+    /// Inserts multiple values in the set.
     ///
-    /// If a key-value pair cannot be inserted because the key is already
-    /// present, it is dropped.
+    /// If a value cannot be inserted because it is already present, it is
+    /// dropped.
     ///
     /// Calling this method is equivalent to calling `try_extend` and panicking
     /// on error.
     ///
     /// #   Panics
     ///
-    /// Panics if any of the key-value pairs cannot be inserted due to an error.
+    /// Panics if any of the values cannot be inserted due to an error.
     ///
     /// #   Example
     ///
     /// ```
-    /// #   use jagged::hashmap::HashMap;
-    /// let map: HashMap<_, _> = HashMap::new();
-    /// map.extend([(1, 1), (2, 2), (3, 3)].iter().copied());
-    /// assert_eq!(3, map.len());
+    /// #   use jagged::hashset::HashSet;
+    /// let set: HashSet<_> = HashSet::new();
+    /// set.extend([1, 2, 3].iter().copied());
+    /// assert_eq!(3, set.len());
     /// ```
     pub fn extend<C>(&self, collection: C)
     where
-        C: IntoIterator<Item = (K, V)>,
-        K: Eq + hash::Hash,
+        C: IntoIterator<Item = T>,
+        T: Eq + hash::Hash,
     {
         self.try_extend(collection).unwrap_or_else(panic_from_failure);
     }
 
     //  Returns a SharedReader.
-    fn shared_reader(&self) -> BucketsSharedReader<'_, Entry<K, V>, H> {
+    fn shared_reader(&self) -> BucketsSharedReader<'_, Entry<T>, H> {
         let size = Size(self.size.load());
         //  Safety:
         //  -   `size` is less than the size of the collection.
@@ -695,7 +645,7 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     //  #   Safety
     //
     //  -   Assumes that `self.size` will not increase outside of this instance.
-    unsafe fn shared_writer(&self) -> BucketsSharedWriter<'_, Entry<K, V>, H> {
+    unsafe fn shared_writer(&self) -> BucketsSharedWriter<'_, Entry<T>, H> {
         let size = Size(self.size.load());
         //  Safety:
         //  -   `size` exactly matches the size of the collection.
@@ -704,83 +654,68 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     }
 }
 
-/// A `HashMap<K, V>` can be `Send` across threads whenever the standard
-/// `HashMap` can.
+/// A `HashSet<T>` can be `Send` across threads whenever the standard
+/// `HashSet` can.
 ///
 /// #   Example of Send.
 ///
-/// With most types, it is possible to send a `HashMap` across threads.
+/// With most types, it is possible to send a `HashSet` across threads.
 ///
 /// ```
-/// # use jagged::hashmap::HashMap;
+/// # use jagged::hashset::HashSet;
 /// fn ensure_send<T: Send>(_: T) {}
 ///
-/// let map: HashMap<_, _> = HashMap::new();
-/// map.insert("Hello", "World");
+/// let set: HashSet<_> = HashSet::new();
+/// set.insert("Hello, World");
 ///
-/// ensure_send(map);
+/// ensure_send(set);
 /// ```
 ///
-/// #   Example of Key not being Send.
+/// #   Example of not Send.
 ///
-/// A non-Send Key prevents the HashMap from being Send.
+/// A non-Send T prevents the HashSet from being Send.
 ///
 /// ```compile_fail
 /// # use std::rc::Rc;
-/// # use jagged::hashmap::HashMap;
+/// # use jagged::hashset::HashSet;
 /// fn ensure_send<T: Send>(_: T) {}
 ///
-/// let map: HashMap<_, _> = HashMap::new();
-/// map.insert(Rc::new(3), "World");
+/// let set: HashSet<_> = HashSet::new();
+/// set.insert(Rc::new(3));
 ///
-/// ensure_send(map);
-/// ```
-///
-/// #   Example of Value not being Send.
-///
-/// A non-Send Value prevents the HashMap from being Send.
-///
-/// ```compile_fail
-/// # use std::rc::Rc;
-/// # use jagged::hashmap::HashMap;
-/// fn ensure_send<T: Send>(_: T) {}
-///
-/// let map: HashMap<_, _> = HashMap::new();
-/// map.insert("Hello", Rc::new(3));
-///
-/// ensure_send(map);
+/// ensure_send(set);
 /// ```
 ///
 /// #   Example of not Sync.
 ///
-/// It is never possible to share a reference to `HashMap<K, V>` across threads.
+/// It is never possible to share a reference to `HashSet<T>` across threads.
 ///
 /// ```compile_fail
 /// # use std::rc::Rc;
-/// # use jagged::hashmap::HashMap;
+/// # use jagged::hashset::HashSet;
 /// fn ensure_sync<T: Sync>(_: T) {}
 ///
-/// let map: HashMap<_, _> = HashMap::new();
-/// map.insert(1, 2);
+/// let set: HashSet<_> = HashSet::new();
+/// set.insert(1);
 ///
-/// ensure_sync(map);
+/// ensure_sync(set);
 /// ```
-unsafe impl<K: Send, V: Send, H: HashHooks + Send> Send for HashMap<K, V, H> {}
+unsafe impl<T: Send, H: HashHooks + Send> Send for HashSet<T, H> {}
 
-impl<K, V, H: HashHooks> Drop for HashMap<K, V, H> {
+impl<T, H: HashHooks> Drop for HashSet<T, H> {
     fn drop(&mut self) {
         self.clear();
         self.shrink();
     }
 }
 
-impl<K, V, H: HashHooks + Default> Default for HashMap<K, V, H> {
+impl<T, H: HashHooks + Default> Default for HashSet<T, H> {
     fn default() -> Self { Self::new() }
 }
 
-impl<K: fmt::Debug, V: fmt::Debug, H: HashHooks> fmt::Debug for HashMap<K, V, H> {
+impl<T: fmt::Debug, H: HashHooks> fmt::Debug for HashSet<T, H> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.shared_reader().debug("HashMap", f)
+        self.shared_reader().debug("HashSet", f)
     }
 }
 
@@ -795,26 +730,26 @@ mod tests {
 
 use std::mem;
 
-use super::HashMap;
+use super::HashSet;
 
 #[test]
 fn size_of() {
     const PTR_SIZE: usize = mem::size_of::<usize>();
 
-    assert_eq!(24 * PTR_SIZE, mem::size_of::<HashMap<u8, u8>>());
+    assert_eq!(24 * PTR_SIZE, mem::size_of::<HashSet<u8>>());
 }
 
 #[test]
 fn trait_debug() {
     use std::fmt::Write;
 
-    let map: HashMap<_, _> = HashMap::new();
-    map.extend([(1, 1), (2, 2), (3, 3), (4, 4), (5, 5)].iter().copied());
+    let set: HashSet<_> = HashSet::new();
+    set.extend([1, 2, 3, 4, 5].iter().copied());
 
     let mut sink = String::new();
-    let _ = write!(sink, "{:?}", map);
+    let _ = write!(sink, "{:?}", set);
 
-    assert!(sink.starts_with("HashMap { capacity: 16, length: 5, buckets: [["));
+    assert!(sink.starts_with("HashSet { capacity: 16, length: 5, buckets: [["));
     assert!(sink.ends_with("]] }"));
 }
 

@@ -15,6 +15,7 @@
 pub mod allocator;
 pub mod failure;
 pub mod hashmap;
+pub mod hashset;
 pub mod vector;
 
 mod hashcore;
