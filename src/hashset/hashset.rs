@@ -702,6 +702,27 @@ impl<T, H: HashHooks> HashSet<T, H> {
 /// ```
 unsafe impl<T: Send, H: HashHooks + Send> Send for HashSet<T, H> {}
 
+/// A `HashSet<K, V>` is always safe to use across panics.
+///
+/// #   Example of UnwindSafe.
+///
+/// ```
+/// # use std::panic::UnwindSafe;
+/// # use std::rc::Rc;
+/// # use jagged::hashset::HashSet;
+/// fn ensure_unwind_safe<T: UnwindSafe>(_: T) {}
+///
+/// let set: HashSet<_> = HashSet::new();
+/// set.insert(Rc::new(4));
+///
+/// ensure_unwind_safe(set);
+/// ```
+#[cfg(feature = "with-std")]
+impl<T, H: HashHooks> std::panic::UnwindSafe for HashSet<T, H> {}
+
+#[cfg(feature = "with-std")]
+impl<T, H: HashHooks> std::panic::RefUnwindSafe for HashSet<T, H> {}
+
 impl<T, H: HashHooks> Drop for HashSet<T, H> {
     fn drop(&mut self) {
         self.clear();
@@ -747,6 +768,8 @@ use std::mem;
 
 use super::HashSet;
 
+use crate::utils::tester::*;
+
 #[test]
 fn size_of() {
     const PTR_SIZE: usize = mem::size_of::<usize>();
@@ -773,6 +796,26 @@ fn trait_from_iterator() {
     let set: HashSet<_> = [1, 2, 3, 4, 5].iter().copied().collect();
 
     assert_eq!(5, set.len());
+}
+
+#[test]
+fn panic_drop() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    let collection = vec![
+        PanickyDrop::new(0), PanickyDrop::new(1),
+        PanickyDrop::panicky(2), PanickyDrop::new(3)
+    ];
+
+    let mut set: HashSet<_> = HashSet::default();
+    set.extend(collection);
+
+    let panicked = catch_unwind(AssertUnwindSafe(|| {
+        set.clear();
+    }));
+    assert!(panicked.is_err());
+
+    assert_eq!(0, set.len());
 }
 
 }   //  mod tests

@@ -767,6 +767,27 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
 /// ```
 unsafe impl<K: Send, V: Send, H: HashHooks + Send> Send for HashMap<K, V, H> {}
 
+/// A `HashMap<K, V>` is always safe to use across panics.
+///
+/// #   Example of UnwindSafe.
+///
+/// ```
+/// # use std::panic::UnwindSafe;
+/// # use std::rc::Rc;
+/// # use jagged::hashmap::HashMap;
+/// fn ensure_unwind_safe<T: UnwindSafe>(_: T) {}
+///
+/// let map: HashMap<_, _> = HashMap::new();
+/// map.insert(Rc::new(4), "Go!");
+///
+/// ensure_unwind_safe(map);
+/// ```
+#[cfg(feature = "with-std")]
+impl<K, V, H: HashHooks> std::panic::UnwindSafe for HashMap<K, V, H> {}
+
+#[cfg(feature = "with-std")]
+impl<K, V, H: HashHooks> std::panic::RefUnwindSafe for HashMap<K, V, H> {}
+
 impl<K, V, H: HashHooks> Drop for HashMap<K, V, H> {
     fn drop(&mut self) {
         self.clear();
@@ -812,6 +833,8 @@ use std::mem;
 
 use super::HashMap;
 
+use crate::utils::tester::*;
+
 #[test]
 fn size_of() {
     const PTR_SIZE: usize = mem::size_of::<usize>();
@@ -839,6 +862,28 @@ fn trait_from_iterator() {
         [(1, 1), (2, 2), (3, 3), (4, 4), (5, 5)].iter().copied().collect();
 
     assert_eq!(5, map.len());
+}
+
+#[test]
+fn panic_drop() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    let collection = vec![
+        (PanickyDrop::new(0), 0),
+        (PanickyDrop::new(1), 1),
+        (PanickyDrop::panicky(2), 2),
+        (PanickyDrop::new(3), 3),
+    ];
+
+    let mut map: HashMap<_, _> = HashMap::default();
+    map.extend(collection);
+
+    let panicked = catch_unwind(AssertUnwindSafe(|| {
+        map.clear();
+    }));
+    assert!(panicked.is_err());
+
+    assert_eq!(0, map.len());
 }
 
 }   //  mod tests

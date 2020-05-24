@@ -1,8 +1,10 @@
 //! Internal testing utilities
 
-use crate::allocator::{Allocator, DefaultAllocator, Layout};
-use crate::root::{cell, ptr};
+use crate::root::{cell, iter, ops, ptr};
 use crate::root::sync::atomic::{AtomicUsize, Ordering};
+
+use crate::allocator::{Allocator, DefaultAllocator, Layout};
+use crate::hashcore::key::Key;
 
 //  Allocation
 //
@@ -88,6 +90,8 @@ impl Allocator for TestAllocator {
     }
 
     unsafe fn deallocate(&self, ptr: *mut u8, layout: Layout) {
+        self.allocator.deallocate(ptr, layout);
+
         let allocation = Allocation::new(ptr, layout);
 
         if let Some(index) = self.locate(allocation) {
@@ -96,8 +100,6 @@ impl Allocator for TestAllocator {
             panic!("Could not find {:?} in {:?}",
                 allocation, &*self.allocations.borrow());
         }
-
-        self.allocator.deallocate(ptr, layout)
     }
 }
 
@@ -137,5 +139,72 @@ impl<'a> SpyElement<'a> {
 impl<'a> Drop for SpyElement<'a> {
     fn drop(&mut self) {
         self.count.decrement();
+    }
+}
+
+//  An Allocator which panics when failing to allocate or deallocate.
+#[derive(Default)]
+pub struct PanickyAllocator(TestAllocator);
+
+impl ops::Deref for PanickyAllocator {
+    type Target = TestAllocator;
+
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+
+impl Allocator for PanickyAllocator {
+    unsafe fn allocate(&self, layout: Layout) -> *mut u8 {
+        let result = self.0.allocate(layout);
+
+        assert!(!result.is_null());
+
+        result
+    }
+
+    unsafe fn deallocate(&self, ptr: *mut u8, layout: Layout) {
+        self.0.deallocate(ptr, layout);
+    }
+}
+
+//  A value which may panic on drop.
+#[derive(Eq, Hash, PartialEq)]
+pub struct PanickyDrop<T>(T, bool);
+
+impl<T> PanickyDrop<T> {
+    //  Creates a normal instance.
+    pub fn new(value: T) -> Self { Self(value, false) }
+
+    //  Creates a panicky instance.
+    pub fn panicky(value: T) -> Self { Self(value, true) }
+}
+
+impl<T> Drop for PanickyDrop<T> {
+    fn drop(&mut self) { if self.1 { panic!("Oh No!") } }
+}
+
+impl<T> Key for PanickyDrop<T> {
+    type Key = T;
+
+    fn key(&self) -> &Self::Key { &self.0 }
+}
+
+//  An Iterator which panics when reaching the configured count.
+pub struct PanickyIterator(u32, u32);
+
+impl PanickyIterator {
+    //  Creates an instance configured to panic after yielding `count`
+    //  elements.
+    pub fn new(count: u32) -> PanickyIterator { PanickyIterator(0, count) }
+}
+
+impl iter::Iterator for PanickyIterator {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<u32> {
+        assert_ne!(self.0, self.1);
+
+        let result = self.0;
+        self.0 += 1;
+        Some(result)
     }
 }

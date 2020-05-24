@@ -541,12 +541,18 @@ impl<T> Bucket<T> {
             },
         };
 
+        let ptr = self.0.get();
+
+        //  Pre-pooping your pants.
+        //
+        //  If `deallocate` panicks, there is no guarantee the pointer is still
+        //  usable.
+        self.0.set(ptr::null_mut());
+
         //  Safety:
         //  -   The pointer matches the pointer of the allocation.
         //  -   The layout matches the layout of the allocation.
-        allocator.deallocate(self.0.get() as *mut u8, layout);
-
-        self.0.set(ptr::null_mut());
+        allocator.deallocate(ptr as *mut u8, layout);
     }
 
     //  Gets a reference to the element at index.
@@ -814,6 +820,12 @@ fn bucket_clear() {
     unsafe { bucket.clear(BucketLength(initialized)) };
 
     assert_eq!(0, count.get());
+}
+
+#[test]
+#[should_panic]
+fn bucket_array_zero_sized() {
+    BucketArray::<()>::default();
 }
 
 #[test]
@@ -1311,7 +1323,6 @@ fn bucket_array_clear_empty() {
     unsafe {
         buckets.clear(Length(0), capacity);
     }
-
 }
 
 #[test]
@@ -1338,6 +1349,83 @@ fn bucket_array_clear_all() {
     }
 
     assert_eq!(0, count.get());
+}
+
+#[test]
+fn bucket_array_panic_allocate() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    const NB_ALLOCATIONS: usize = 2;
+
+    let allocator = PanickyAllocator::default();
+    allocator.allowed.set(NB_ALLOCATIONS);
+
+    let buckets = BucketArray::<i32>::default();
+    let capacity = Capacity::new(1, MAX_BUCKETS);
+
+    let panicked = catch_unwind(AssertUnwindSafe(|| {
+        unsafe {
+            let _ = buckets.try_reserve(Length(4), Length(0), capacity, &allocator);
+        }
+    }));
+    assert!(panicked.is_err());
+
+    assert!(buckets.0[0].is_allocated());
+    assert!(buckets.0[1].is_allocated());
+    assert!(!buckets.0[NB_ALLOCATIONS].is_allocated());
+}
+
+#[test]
+fn bucket_array_panic_deallocate() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    const FAILED_DEALLOCATION: usize = 1;
+
+    let allocator = TestAllocator::default();
+    allocator.allowed.set(usize::MAX);
+
+    let buckets = BucketArray::<i32>::default();
+    let capacity = Capacity::new(1, MAX_BUCKETS);
+
+    unsafe {
+        let _ = buckets.try_reserve(Length(4), Length(0), capacity, &allocator);
+    }
+    assert_eq!(3, allocator.allocations.borrow().len());
+
+    allocator.allocations.borrow_mut().remove(FAILED_DEALLOCATION);
+
+    let panicked = catch_unwind(AssertUnwindSafe(|| {
+        unsafe { buckets.shrink(Length(0), capacity, &allocator) };
+    }));
+    assert!(panicked.is_err());
+
+    assert!(!buckets.0[0].is_allocated());
+    assert!(!buckets.0[FAILED_DEALLOCATION].is_allocated());
+    assert!(buckets.0[2].is_allocated());
+}
+
+#[test]
+fn bucket_array_panic_next() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    let allocator = TestAllocator::default();
+    allocator.allowed.set(usize::MAX);
+
+    let buckets = BucketArray::default();
+    let capacity = Capacity::new(1, MAX_BUCKETS);
+
+    let panicked = catch_unwind(AssertUnwindSafe(|| {
+        unsafe {
+            let collection = PanickyIterator::new(3);
+            buckets.try_extend(collection, Length(0), capacity, &allocator);
+        }
+    }));
+    assert!(panicked.is_err());
+
+    assert!(buckets.0[0].is_allocated());
+    assert!(buckets.0[1].is_allocated());
+    assert!(buckets.0[2].is_allocated());
+    assert!(!buckets.0[3].is_allocated());
 }
 
 }

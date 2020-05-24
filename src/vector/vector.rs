@@ -739,6 +739,27 @@ impl<T, H: VectorHooks> Vector<T, H> {
 /// ```
 unsafe impl<T: Send, H: VectorHooks + Send> Send for Vector<T, H> {}
 
+/// A `Vector<T>` is always safe to use across panics.
+///
+/// #   Example of UnwindSafe.
+///
+/// ```
+/// # use std::panic::UnwindSafe;
+/// # use std::rc::Rc;
+/// # use jagged::vector::Vector;
+/// fn ensure_unwind_safe<T: UnwindSafe>(_: T) {}
+///
+/// let vec: Vector<_> = Vector::new();
+/// vec.push(Rc::new(4));
+///
+/// ensure_unwind_safe(vec);
+/// ```
+#[cfg(feature = "with-std")]
+impl<T, H: VectorHooks> std::panic::UnwindSafe for Vector<T, H> {}
+
+#[cfg(feature = "with-std")]
+impl<T, H: VectorHooks> std::panic::RefUnwindSafe for Vector<T, H> {}
+
 impl<T, H: VectorHooks> Drop for Vector<T, H> {
     fn drop(&mut self) {
         self.clear();
@@ -794,6 +815,8 @@ use std::mem;
 
 use super::Vector;
 
+use crate::utils::tester::*;
+
 #[test]
 fn size_of() {
     const PTR_SIZE: usize = mem::size_of::<usize>();
@@ -822,6 +845,26 @@ fn trait_from_iterator() {
     let vec: Vector<_> = [1, 2, 3, 4, 5].iter().copied().collect();
 
     assert_eq!(5, vec.len());
+}
+
+#[test]
+fn panic_drop() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    let collection = vec![
+        PanickyDrop::new(0), PanickyDrop::new(1),
+        PanickyDrop::panicky(2), PanickyDrop::new(3)
+    ];
+
+    let mut vec: Vector<_> = Vector::default();
+    vec.extend(collection);
+
+    let panicked = catch_unwind(AssertUnwindSafe(|| {
+        vec.clear();
+    }));
+    assert!(panicked.is_err());
+
+    assert_eq!(0, vec.len());
 }
 
 }   //  mod tests
