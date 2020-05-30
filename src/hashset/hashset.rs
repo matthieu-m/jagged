@@ -586,7 +586,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
         T: Eq + hash::Hash,
     {
         let collection = collection.into_iter();
-        let collection = collection.map(|value| Entry(value));
+        let collection = collection.map(Entry);
 
         //  Safety:
         //  -   `size` does not increase between creation and use.

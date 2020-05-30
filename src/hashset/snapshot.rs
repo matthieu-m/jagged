@@ -551,7 +551,7 @@ impl<'a, T, H> Clone for DifferenceIterator<'a, T, H> {
     fn clone(&self) -> Self {
         DifferenceIterator {
             left: self.left.clone(),
-            right: self.right.clone(),
+            right: self.right,
         }
     }
 }
@@ -638,7 +638,7 @@ impl<'a, T, H> Clone for IntersectionIterator<'a, T, H> {
     fn clone(&self) -> Self {
         IntersectionIterator {
             left: self.left.clone(),
-            right: self.right.clone(),
+            right: self.right,
         }
     }
 }
