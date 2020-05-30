@@ -84,10 +84,8 @@ In order to so, two compilation modes are supported:
 *Note: ideally, it would also optionally depend on `alloc`, unfortunately this
 crate is still nightly-only.*
 
-The Jagged library has not other dependencies, and intends to remain
+The Jagged library has no non-dev dependencies, and intends to remain
 lightweight.
-
-It may acquire dev-dependencies in the future.
 
 ##  Jagged Array.
 

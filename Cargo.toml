@@ -12,3 +12,6 @@ default = ["with-std"]
 #   Unless activated, this crate is [no_std], with the corresponding loss of
 #   allocation capabilities.
 with-std = []
+
+[dev-dependencies]
+crossbeam-utils = "0.7.2"
