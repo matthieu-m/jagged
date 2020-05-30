@@ -274,6 +274,12 @@ unsafe impl<'a, T: Sync> Send for VectorSnapshot<'a, T> {}
 /// ```
 unsafe impl<'a, T: Sync> Sync for VectorSnapshot<'a, T> {}
 
+#[cfg(feature = "with-std")]
+impl<'a, T> std::panic::UnwindSafe for VectorSnapshot<'a, T> {}
+
+#[cfg(feature = "with-std")]
+impl<'a, T> std::panic::RefUnwindSafe for VectorSnapshot<'a, T> {}
+
 impl<'a, T> Clone for VectorSnapshot<'a, T> {
     fn clone(&self) -> Self { *self }
 }

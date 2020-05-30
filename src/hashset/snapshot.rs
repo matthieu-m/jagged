@@ -456,6 +456,12 @@ unsafe impl<'a, T: Sync, H: Sync> Send for HashSetSnapshot<'a, T, H> {}
 /// ```
 unsafe impl<'a, T: Sync, H: Sync> Sync for HashSetSnapshot<'a, T, H> {}
 
+#[cfg(feature = "with-std")]
+impl<'a, T, H> std::panic::UnwindSafe for HashSetSnapshot<'a, T, H> {}
+
+#[cfg(feature = "with-std")]
+impl<'a, T, H> std::panic::RefUnwindSafe for HashSetSnapshot<'a, T, H> {}
+
 impl<'a, T, H> Clone for HashSetSnapshot<'a, T, H> {
     fn clone(&self) -> Self { *self }
 }

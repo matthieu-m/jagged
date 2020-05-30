@@ -258,6 +258,12 @@ unsafe impl<'a, T: Sync, H: Sync> Send for HashSetReader<'a, T, H> {}
 /// ```
 unsafe impl<'a, T: Sync, H: Sync> Sync for HashSetReader<'a, T, H> {}
 
+#[cfg(feature = "with-std")]
+impl<'a, T, H> std::panic::UnwindSafe for HashSetReader<'a, T, H> {}
+
+#[cfg(feature = "with-std")]
+impl<'a, T, H> std::panic::RefUnwindSafe for HashSetReader<'a, T, H> {}
+
 impl<'a, T, H> Clone for HashSetReader<'a, T, H> {
     fn clone(&self) -> Self { *self }
 }

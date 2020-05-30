@@ -263,6 +263,12 @@ unsafe impl<'a, T: Sync> Send for VectorReader<'a, T> {}
 /// ```
 unsafe impl<'a, T: Sync> Sync for VectorReader<'a, T> {}
 
+#[cfg(feature = "with-std")]
+impl<'a, T> std::panic::UnwindSafe for VectorReader<'a, T> {}
+
+#[cfg(feature = "with-std")]
+impl<'a, T> std::panic::RefUnwindSafe for VectorReader<'a, T> {}
+
 impl<'a, T> Clone for VectorReader<'a, T> {
     fn clone(&self) -> Self { *self }
 }

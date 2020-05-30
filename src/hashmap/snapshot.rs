@@ -346,6 +346,12 @@ unsafe impl<'a, K: Sync, V: Sync, H: Sync> Send for HashMapSnapshot<'a, K, V, H>
 /// ```
 unsafe impl<'a, K: Sync, V: Sync, H: Sync> Sync for HashMapSnapshot<'a, K, V, H> {}
 
+#[cfg(feature = "with-std")]
+impl<'a, K, V, H> std::panic::UnwindSafe for HashMapSnapshot<'a, K, V, H> {}
+
+#[cfg(feature = "with-std")]
+impl<'a, K, V, H> std::panic::RefUnwindSafe for HashMapSnapshot<'a, K, V, H> {}
+
 impl<'a, K, V, H> Clone for HashMapSnapshot<'a, K, V, H> {
     fn clone(&self) -> Self { *self }
 }

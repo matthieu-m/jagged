@@ -309,6 +309,12 @@ unsafe impl<'a, K: Sync, V: Sync, H: Sync> Send for HashMapReader<'a, K, V, H> {
 /// ```
 unsafe impl<'a, K: Sync, V: Sync, H: Sync> Sync for HashMapReader<'a, K, V, H> {}
 
+#[cfg(feature = "with-std")]
+impl<'a, K, V, H> std::panic::UnwindSafe for HashMapReader<'a, K, V, H> {}
+
+#[cfg(feature = "with-std")]
+impl<'a, K, V, H> std::panic::RefUnwindSafe for HashMapReader<'a, K, V, H> {}
+
 impl<'a, K, V, H> Clone for HashMapReader<'a, K, V, H> {
     fn clone(&self) -> Self { *self }
 }
