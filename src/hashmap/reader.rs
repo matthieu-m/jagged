@@ -102,7 +102,7 @@ impl<'a, K, V, H> HashMapReader<'a, K, V, H> {
     /// let reader = map.reader();
     /// assert_eq!(512 * 1024, reader.max_capacity());
     /// ```
-    pub fn max_capacity(&self) -> usize { self.shared_reader().max_capacity() / 2 }
+    pub fn max_capacity(&self) -> usize { self.shared_reader().max_capacity() }
 
     /// Returns the number of buckets currently used by the `HashMap` instance.
     ///

@@ -29,7 +29,10 @@ impl Capacity {
     pub fn max_buckets(self) -> NumberBuckets { self.0.max_buckets() }
 
     //  Returns the maximum capacity.
-    pub fn max_capacity(self) -> usize { self.0.max_capacity() }
+    pub fn max_capacity(self) -> usize {
+        //  Effective capacity is 50% due to load factor of 0.5.
+        self.0.max_capacity() / 2
+    }
 
     //  Returns the capacity of a given bucket.
     pub fn of_bucket(self, bucket: BucketIndex) -> BucketCapacity {
@@ -104,6 +107,13 @@ fn capacity_number_buckets_2() {
     assert_eq!(5, number_buckets(9));
     assert_eq!(5, number_buckets(16));
     assert_eq!(6, number_buckets(17));
+
+    const MAX_CAPACITY: usize = 1usize << 19;
+
+    assert_eq!(20, number_buckets(MAX_CAPACITY));
+    assert_eq!(21, number_buckets(MAX_CAPACITY + 1));
+    assert_eq!(21, number_buckets(usize::MAX / 2 + 1));
+    assert_eq!(21, number_buckets(usize::MAX));
 }
 
 #[test]
@@ -129,6 +139,13 @@ fn capacity_number_buckets_4() {
     assert_eq!(4, number_buckets(9));
     assert_eq!(4, number_buckets(16));
     assert_eq!(5, number_buckets(17));
+
+    const MAX_CAPACITY: usize = 1usize << 20;
+
+    assert_eq!(20, number_buckets(MAX_CAPACITY));
+    assert_eq!(21, number_buckets(MAX_CAPACITY + 1));
+    assert_eq!(21, number_buckets(usize::MAX / 2 + 1));
+    assert_eq!(21, number_buckets(usize::MAX));
 }
 
 #[test]

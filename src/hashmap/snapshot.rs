@@ -95,7 +95,7 @@ impl<'a, K, V, H> HashMapSnapshot<'a, K, V, H> {
     /// let snapshot = map.snapshot();
     /// assert_eq!(512 * 1024, snapshot.max_capacity());
     /// ```
-    pub fn max_capacity(&self) -> usize { self.reader.max_capacity() / 2 }
+    pub fn max_capacity(&self) -> usize { self.reader.max_capacity() }
 
     /// Returns the number of buckets currently used.
     ///

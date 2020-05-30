@@ -265,12 +265,7 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// let map: HashMap<i32, i32> = HashMap::new();
     /// assert_eq!(512 * 1024, map.max_capacity());
     /// ```
-    pub fn max_capacity(&self) -> usize {
-        let capacity = self.shared_reader().max_capacity();
-
-        //  Load 50%
-        capacity / 2
-    }
+    pub fn max_capacity(&self) -> usize { self.shared_reader().max_capacity() }
 
     /// Returns the number of buckets currently used.
     ///

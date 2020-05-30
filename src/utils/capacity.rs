@@ -69,8 +69,10 @@ impl Capacity {
 
         if multiplier == 0 {
             BucketIndex(0)
-        } else {
+        } else if floor_log2(multiplier) < self.max_buckets {
             BucketIndex(floor_log2(multiplier) as usize + 1)
+        } else {
+            BucketIndex(self.max_buckets as usize)
         }
     }
 }

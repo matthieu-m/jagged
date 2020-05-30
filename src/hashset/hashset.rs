@@ -265,12 +265,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
     /// let set: HashSet<i32> = HashSet::new();
     /// assert_eq!(512 * 1024, set.max_capacity());
     /// ```
-    pub fn max_capacity(&self) -> usize {
-        let capacity = self.shared_reader().max_capacity();
-
-        //  Load 50%
-        capacity / 2
-    }
+    pub fn max_capacity(&self) -> usize { self.shared_reader().max_capacity() }
 
     /// Returns the number of buckets currently used.
     ///

@@ -30,7 +30,6 @@ Subjective:
 
 Objective:
 
--   Not completely tested.
 -   Not fuzzed.
 -   Not audited.
 -   Not proven.
