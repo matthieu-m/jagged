@@ -1,6 +1,6 @@
 //! Internal testing utilities
 
-use crate::root::{cell, iter, ops, ptr};
+use crate::root::{cell, fmt, hash, iter, ops, ptr};
 use crate::root::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::allocator::{Allocator, DefaultAllocator, Layout};
@@ -49,6 +49,14 @@ pub struct TestAllocator {
 }
 
 impl TestAllocator {
+    pub fn new(allowed: usize) -> TestAllocator {
+        let allocator = TestAllocator::default();
+        allocator.allowed.set(allowed);
+        allocator
+    }
+
+    pub fn unlimited() -> TestAllocator { TestAllocator::new(usize::MAX) }
+
     pub fn allocations(&self) -> Vec<Allocation> {
         self.allocations.borrow().clone()
     }
@@ -107,6 +115,82 @@ impl Drop for TestAllocator {
     fn drop(&mut self) { self.clear() }
 }
 
+//  Test Hooks
+//
+//  An allocator specifically for testing:
+//  -   Allows injecting allocation failures.
+//  -   Checks that allocations and deallocations match.
+//
+//  Combined with a hasher allowing to insert any hash.
+pub struct TestHooks {
+    hash: u64,
+    panic_hash: cell::Cell<u64>,
+    allocator: TestAllocator,
+}
+
+impl TestHooks {
+    pub fn new(allowed: usize) -> TestHooks {
+        let hooks = TestHooks::default();
+        hooks.allowed.set(allowed);
+        hooks
+    }
+
+    pub fn unlimited() -> TestHooks { TestHooks::new(usize::MAX) }
+
+    pub fn set_panic_hash(&self, count: u64) {
+        self.panic_hash.set(count);
+    }
+}
+
+impl Default for TestHooks {
+    fn default() -> Self {
+        Self {
+            hash: 0,
+            panic_hash: cell::Cell::new(u64::MAX),
+            allocator: TestAllocator::default(),
+        }
+    }
+}
+
+impl ops::Deref for TestHooks {
+    type Target = TestAllocator;
+
+    fn deref(&self) -> &Self::Target { &self.allocator }
+}
+
+impl Allocator for TestHooks {
+    unsafe fn allocate(&self, layout: Layout) -> *mut u8 {
+        self.allocator.allocate(layout)
+    }
+
+    unsafe fn deallocate(&self, ptr: *mut u8, layout: Layout) {
+        self.allocator.deallocate(ptr, layout)
+    }
+}
+
+impl hash::BuildHasher for TestHooks {
+    type Hasher = TestHasher;
+
+    fn build_hasher(&self) -> TestHasher {
+        let count = self.panic_hash.get();
+        assert_ne!(0, count);
+
+        self.panic_hash.set(count - 1);
+
+        TestHasher(self.hash)
+    }
+}
+
+//  A very "poor" hasher, in a sense, however controlling the hash is very
+//  useful for functional testing.
+pub struct TestHasher(u64);
+
+impl hash::Hasher for TestHasher {
+    fn finish(&self) -> u64 { self.0 }
+
+    fn write(&mut self, _: &[u8]) {}
+}
+
 //  SpyCount
 //
 //  A counter of the number of instances of elements.
@@ -140,6 +224,29 @@ impl<'a> Drop for SpyElement<'a> {
     fn drop(&mut self) {
         self.count.decrement();
     }
+}
+
+//  Spy Key
+//
+//  A SpyElement combined with a key.
+pub struct SpyKey<'a>(u64, SpyElement<'a>);
+
+impl<'a> SpyKey<'a> {
+    pub fn new(key: u64, count: &'a SpyCount) -> Self {
+        Self(key, SpyElement::new(count))
+    }
+}
+
+impl<'a> fmt::Debug for SpyKey<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SpyKey({})", self.0)
+    }
+}
+
+impl<'a> Key for SpyKey<'a> {
+    type Key = u64;
+
+    fn key(&self) -> &Self::Key { &self.0 }
 }
 
 //  An Allocator which panics when failing to allocate or deallocate.

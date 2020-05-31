@@ -28,7 +28,7 @@ impl<T> Element<T> {
     //
     //  -   Assumes that `current` is less than the current size of the collection.
     pub unsafe fn get(&self, current: Generation) -> Option<&T> {
-        if current.0 >= self.generation.load() {
+        if current.0 > self.generation.load() {
             //  Safety:
             //  -   Raw is initialized as `self.generation` is not UNINTIALIZED.
             //  -   Raw is finalized as `self.generation` is less than `current`.
@@ -102,7 +102,7 @@ fn default() {
     let element: Element<String> = Element::default();
 
     assert!(!element.is_initialized());
-    assert_eq!(None, unsafe { element.get(Generation(UNINTIALIZED - 1)) });
+    assert_eq!(None, unsafe { element.get(Generation(UNINTIALIZED)) });
 }
 
 #[test]
@@ -113,8 +113,8 @@ fn get_set_generation() {
     unsafe { element.set(Generation(generation), 42) };
 
     assert_eq!(None, unsafe { element.get(Generation(0)) });
-    assert_eq!(None, unsafe { element.get(Generation(generation - 1)) });
-    assert_eq!(Some(&42), unsafe { element.get(Generation(generation)) });
+    assert_eq!(None, unsafe { element.get(Generation(generation)) });
+    assert_eq!(Some(&42), unsafe { element.get(Generation(generation + 1)) });
     assert_eq!(Some(&42), unsafe { element.get(Generation(generation + 1)) });
 }
 
@@ -125,7 +125,7 @@ fn drop_initialized() {
 
     unsafe { element.set(generation, 42) };
 
-    assert_eq!(Some(&42), unsafe { element.get(generation) });
+    assert_eq!(Some(&42), unsafe { element.get(Generation(generation.0 + 1)) });
 
     let mut element = element;
     element.drop();

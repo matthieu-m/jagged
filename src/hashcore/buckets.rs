@@ -819,89 +819,7 @@ mod tests {
 
 use super::*;
 
-use crate::root::{cell, fmt, ops};
 use crate::utils::tester::*;
-
-struct TestHooks {
-    hash: u64,
-    panic_hash: cell::Cell<u64>,
-    allocator: TestAllocator,
-}
-
-impl TestHooks {
-    fn set_panic_hash(&self, count: u64) {
-        self.panic_hash.set(count);
-    }
-}
-
-impl Default for TestHooks {
-    fn default() -> Self {
-        Self {
-            hash: 0,
-            panic_hash: cell::Cell::new(u64::MAX),
-            allocator: TestAllocator::default(),
-        }
-    }
-}
-
-impl ops::Deref for TestHooks {
-    type Target = TestAllocator;
-
-    fn deref(&self) -> &Self::Target { &self.allocator }
-}
-
-impl Allocator for TestHooks {
-    unsafe fn allocate(&self, layout: Layout) -> *mut u8 {
-        self.allocator.allocate(layout)
-    }
-
-    unsafe fn deallocate(&self, ptr: *mut u8, layout: Layout) {
-        self.allocator.deallocate(ptr, layout)
-    }
-}
-
-impl hash::BuildHasher for TestHooks {
-    type Hasher = TestHasher;
-
-    fn build_hasher(&self) -> TestHasher {
-        let count = self.panic_hash.get();
-        assert_ne!(0, count);
-
-        self.panic_hash.set(count - 1);
-
-        TestHasher(self.hash)
-    }
-}
-
-//  A very "poor" hasher, in a sense, however controlling the hash is very
-//  useful for functional testing.
-struct TestHasher(u64);
-
-impl hash::Hasher for TestHasher {
-    fn finish(&self) -> u64 { self.0 }
-
-    fn write(&mut self, _: &[u8]) {}
-}
-
-struct SpyKey<'a>(u64, SpyElement<'a>);
-
-impl<'a> SpyKey<'a> {
-    fn new(key: u64, count: &'a SpyCount) -> Self {
-        Self(key, SpyElement::new(count))
-    }
-}
-
-impl<'a> fmt::Debug for SpyKey<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "SpyKey({})", self.0)
-    }
-}
-
-impl<'a> Key for SpyKey<'a> {
-    type Key = u64;
-
-    fn key(&self) -> &Self::Key { &self.0 }
-}
 
 //  A value which may panic on drop.
 #[derive(Debug)]
@@ -976,8 +894,7 @@ fn bucket_allocate_failure() {
 
 #[test]
 fn bucket_allocate_success() {
-    let allocator = TestAllocator::default();
-    allocator.allowed.set(1);
+    let allocator = TestAllocator::new(1);
 
     let bucket = Bucket::<SpyElement<'_>>::default();
     let allocated = unsafe { bucket.allocate(BucketCapacity(1), &allocator) };
@@ -992,8 +909,7 @@ fn bucket_allocate_success() {
 
 #[test]
 fn bucket_allocate_skip() {
-    let allocator = TestAllocator::default();
-    allocator.allowed.set(1);
+    let allocator = TestAllocator::new(1);
 
     let bucket = Bucket::<SpyElement<'_>>::default();
     let allocated = unsafe { bucket.allocate(BucketCapacity(1), &allocator) };
@@ -1009,8 +925,7 @@ fn bucket_allocate_skip() {
 
 #[test]
 fn bucket_deallocate() {
-    let allocator = TestAllocator::default();
-    allocator.allowed.set(1);
+    let allocator = TestAllocator::new(1);
 
     let bucket = Bucket::<SpyElement<'_>>::default();
     let allocated = unsafe { bucket.allocate(BucketCapacity(1), &allocator) };
@@ -1029,8 +944,7 @@ fn bucket_clear() {
     let initialized = 3;
     assert!(initialized <= capacity.0);
 
-    let allocator = TestAllocator::default();
-    allocator.allowed.set(1);
+    let allocator = TestAllocator::new(1);
 
     let mut bucket = Bucket::<SpyElement<'_>>::default();
     let allocated = unsafe { bucket.allocate(capacity, &allocator) };
@@ -1058,9 +972,32 @@ fn bucket_array_zero_sized() {
 }
 
 #[test]
+fn bucket_array_get_mut() {
+    let hooks = TestHooks::unlimited();
+
+    let count = SpyCount::zero();
+    let collection = vec![
+        SpyKey::new(1, &count), SpyKey::new(2, &count),
+        SpyKey::new(3, &count), SpyKey::new(4, &count),
+    ];
+
+    let mut buckets = BucketArray::default();
+    let capacity = Capacity::new(1, MAX_BUCKETS);
+
+    let (size, failure) = unsafe {
+        buckets.try_extend(collection, Size(0), capacity, &hooks)
+    };
+
+    assert_eq!(Size(4), size);
+    assert_eq!(None, failure);
+
+    assert!(unsafe { buckets.get_mut(&2, size, capacity, &hooks) }.is_some());
+    assert!(unsafe { buckets.get_mut(&7, size, capacity, &hooks) }.is_none());
+}
+
+#[test]
 fn bucket_array_push_bucket() {
-    let allocator = TestAllocator::default();
-    allocator.allowed.set(usize::MAX);
+    let allocator = TestAllocator::unlimited();
 
     let buckets = BucketArray::<SpyElement<'static>>::default();
     let capacity = Capacity::new(1, MAX_BUCKETS);
@@ -1086,8 +1023,7 @@ fn bucket_array_push_bucket() {
 fn bucket_array_push_bucket_out_of_buckets() {
     const NUMBER_BUCKETS: usize = 3;
 
-    let allocator = TestAllocator::default();
-    allocator.allowed.set(usize::MAX);
+    let allocator = TestAllocator::unlimited();
 
     let buckets = BucketArray::<SpyElement<'static>>::default();
     let capacity = Capacity::new(1, NUMBER_BUCKETS);
@@ -1118,8 +1054,7 @@ fn bucket_array_push_bucket_out_of_memory() {
 
 #[test]
 fn bucket_array_try_reserve() {
-    let allocator = TestAllocator::default();
-    allocator.allowed.set(usize::MAX);
+    let allocator = TestAllocator::unlimited();
 
     let buckets = BucketArray::<SpyElement<'static>>::default();
     let capacity = Capacity::new(1, MAX_BUCKETS);
@@ -1130,6 +1065,7 @@ fn bucket_array_try_reserve() {
 
     assert_eq!(Ok(()), reserved);
     assert_eq!(vec![32, 32, 64, 128, 256, 512], allocator.allocation_sizes());
+    assert_eq!(NumberBuckets(6), buckets.number_buckets());
 
     for index in 0..6 {
         assert!(buckets.0[index].is_allocated());
@@ -1141,9 +1077,29 @@ fn bucket_array_try_reserve() {
 }
 
 #[test]
+#[ignore]   //  Too expensive with MIRI
+fn bucket_array_try_reserve_all() {
+    let allocator = TestAllocator::unlimited();
+
+    let buckets = BucketArray::<i32>::default();
+    let capacity = Capacity::new(1, MAX_BUCKETS);
+
+    let reserved = unsafe {
+        buckets.try_reserve(Size(1024 * 1024), Size(0), capacity, &allocator)
+    };
+
+    assert_eq!(Err(Failure::OutOfBuckets), reserved);
+    assert_eq!(MAX_BUCKETS, allocator.allocations().len());
+    assert_eq!(NumberBuckets(MAX_BUCKETS), buckets.number_buckets());
+
+    for index in 0..MAX_BUCKETS {
+        assert!(buckets.0[index].is_allocated());
+    }
+}
+
+#[test]
 fn bucket_array_try_reserve_elements_overflow() {
-    let allocator = TestAllocator::default();
-    allocator.allowed.set(0);
+    let allocator = TestAllocator::new(0);
 
     let buckets = BucketArray::<SpyElement<'static>>::default();
     let capacity = Capacity::new(1, MAX_BUCKETS);
@@ -1161,8 +1117,7 @@ fn bucket_array_try_reserve_elements_overflow() {
 fn bucket_array_try_reserve_out_of_buckets() {
     const NUMBER_BUCKETS: usize = 3;
 
-    let allocator = TestAllocator::default();
-    allocator.allowed.set(usize::MAX);
+    let allocator = TestAllocator::unlimited();
 
     let buckets = BucketArray::<SpyElement<'static>>::default();
     let capacity = Capacity::new(1, NUMBER_BUCKETS);
@@ -1175,6 +1130,7 @@ fn bucket_array_try_reserve_out_of_buckets() {
 
     assert_eq!(Err(Failure::OutOfBuckets), reserved);
     assert_eq!(vec![32, 32, 64], allocator.allocation_sizes());
+    assert_eq!(NumberBuckets(3), buckets.number_buckets());
 
     for index in 0..NUMBER_BUCKETS {
         assert!(buckets.0[index].is_allocated());
@@ -1189,8 +1145,7 @@ fn bucket_array_try_reserve_out_of_buckets() {
 fn bucket_array_try_reserve_out_of_memory() {
     const NUMBER_BUCKETS: usize = 3;
 
-    let allocator = TestAllocator::default();
-    allocator.allowed.set(NUMBER_BUCKETS);
+    let allocator = TestAllocator::new(NUMBER_BUCKETS);
 
     let buckets = BucketArray::<SpyElement<'static>>::default();
     let capacity = Capacity::new(1, MAX_BUCKETS);
@@ -1203,6 +1158,7 @@ fn bucket_array_try_reserve_out_of_memory() {
 
     assert_eq!(Err(Failure::OutOfMemory), reserved);
     assert_eq!(vec![32, 32, 64], allocator.allocation_sizes());
+    assert_eq!(NumberBuckets(3), buckets.number_buckets());
 
     for index in 0..NUMBER_BUCKETS {
         assert!(buckets.0[index].is_allocated());
@@ -1215,8 +1171,7 @@ fn bucket_array_try_reserve_out_of_memory() {
 
 #[test]
 fn bucket_array_try_insert() {
-    let hooks = TestHooks::default();
-    hooks.allowed.set(usize::MAX);
+    let hooks = TestHooks::unlimited();
 
     let count = SpyCount::zero();
 
@@ -1256,8 +1211,7 @@ fn bucket_array_try_insert() {
 fn bucket_array_try_insert_out_of_buckets() {
     const NUMBER_BUCKETS: usize = 2;
 
-    let hooks = TestHooks::default();
-    hooks.allowed.set(NUMBER_BUCKETS);
+    let hooks = TestHooks::new(NUMBER_BUCKETS);
 
     let count = SpyCount::zero();
 
@@ -1292,8 +1246,7 @@ fn bucket_array_try_insert_out_of_buckets() {
 fn bucket_array_try_insert_out_of_memory() {
     const NUMBER_BUCKETS: usize = 2;
 
-    let hooks = TestHooks::default();
-    hooks.allowed.set(NUMBER_BUCKETS);
+    let hooks = TestHooks::new(NUMBER_BUCKETS);
 
     let count = SpyCount::zero();
 
@@ -1326,8 +1279,7 @@ fn bucket_array_try_insert_out_of_memory() {
 
 #[test]
 fn bucket_array_try_extend() {
-    let hooks = TestHooks::default();
-    hooks.allowed.set(usize::MAX);
+    let hooks = TestHooks::new(usize::MAX);
 
     let count = SpyCount::zero();
     let collection = vec![
@@ -1351,8 +1303,7 @@ fn bucket_array_try_extend() {
 fn bucket_array_try_extend_out_of_buckets() {
     const NUMBER_BUCKETS: usize = 3;
 
-    let hooks = TestHooks::default();
-    hooks.allowed.set(NUMBER_BUCKETS + 1);
+    let hooks = TestHooks::new(NUMBER_BUCKETS + 1);
 
     let count = SpyCount::zero();
     let collection = vec![
@@ -1377,8 +1328,7 @@ fn bucket_array_try_extend_out_of_buckets() {
 fn bucket_array_try_extend_out_of_memory() {
     const NUMBER_BUCKETS: usize = 3;
 
-    let hooks = TestHooks::default();
-    hooks.allowed.set(NUMBER_BUCKETS);
+    let hooks = TestHooks::new(NUMBER_BUCKETS);
 
     let count = SpyCount::zero();
     let collection = vec![
@@ -1401,8 +1351,7 @@ fn bucket_array_try_extend_out_of_memory() {
 
 #[test]
 fn bucket_array_shrink_none() {
-    let hooks = TestHooks::default();
-    hooks.allowed.set(usize::MAX);
+    let hooks = TestHooks::unlimited();
 
     let count = SpyCount::zero();
     let collection = vec![
@@ -1428,8 +1377,7 @@ fn bucket_array_shrink_none() {
 
 #[test]
 fn bucket_array_shrink_partial() {
-    let hooks = TestHooks::default();
-    hooks.allowed.set(usize::MAX);
+    let hooks = TestHooks::unlimited();
 
     let count = SpyCount::zero();
     let collection = vec![
@@ -1459,8 +1407,7 @@ fn bucket_array_shrink_partial() {
 
 #[test]
 fn bucket_array_shrink_all() {
-    let allocator = TestAllocator::default();
-    allocator.allowed.set(usize::MAX);
+    let allocator = TestAllocator::unlimited();
 
     let buckets = BucketArray::<SpyKey<'_>>::default();
     let capacity = Capacity::new(1, MAX_BUCKETS);
@@ -1480,8 +1427,7 @@ fn bucket_array_shrink_all() {
 
 #[test]
 fn bucket_array_clear_empty() {
-    let allocator = TestAllocator::default();
-    allocator.allowed.set(usize::MAX);
+    let allocator = TestAllocator::unlimited();
 
     let buckets = BucketArray::<SpyKey<'_>>::default();
     let capacity = Capacity::new(1, MAX_BUCKETS);
@@ -1499,8 +1445,7 @@ fn bucket_array_clear_empty() {
 
 #[test]
 fn bucket_array_clear_all() {
-    let hooks = TestHooks::default();
-    hooks.allowed.set(usize::MAX);
+    let hooks = TestHooks::unlimited();
 
     let count = SpyCount::zero();
     let collection = vec![
@@ -1553,8 +1498,7 @@ fn bucket_array_panic_deallocate() {
 
     const FAILED_DEALLOCATION: usize = 1;
 
-    let allocator = TestAllocator::default();
-    allocator.allowed.set(usize::MAX);
+    let allocator = TestAllocator::unlimited();
 
     let buckets = BucketArray::<SpyKey<'static>>::default();
     let capacity = Capacity::new(1, MAX_BUCKETS);
@@ -1580,8 +1524,7 @@ fn bucket_array_panic_deallocate() {
 fn bucket_array_panic_next() {
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
-    let hooks = TestHooks::default();
-    hooks.allowed.set(usize::MAX);
+    let hooks = TestHooks::unlimited();
 
     let buckets = BucketArray::default();
     let capacity = Capacity::new(1, MAX_BUCKETS);
@@ -1604,8 +1547,7 @@ fn bucket_array_panic_next() {
 fn bucket_array_panic_hash_get() {
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
-    let hooks = TestHooks::default();
-    hooks.allowed.set(usize::MAX);
+    let hooks = TestHooks::unlimited();
 
     let buckets = BucketArray::default();
     let capacity = Capacity::new(1, MAX_BUCKETS);
@@ -1626,8 +1568,7 @@ fn bucket_array_panic_hash_get() {
 fn bucket_array_panic_hash_insert() {
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
-    let hooks = TestHooks::default();
-    hooks.allowed.set(usize::MAX);
+    let hooks = TestHooks::unlimited();
     hooks.set_panic_hash(3);
 
     let buckets = BucketArray::default();
@@ -1650,8 +1591,7 @@ fn bucket_array_panic_hash_insert() {
 fn bucket_array_panic_eq_get() {
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
-    let hooks = TestHooks::default();
-    hooks.allowed.set(usize::MAX);
+    let hooks = TestHooks::unlimited();
 
     let collection = vec![
         PanickyEq::new(0),
@@ -1677,8 +1617,7 @@ fn bucket_array_panic_eq_get() {
 fn bucket_array_panic_eq_insert() {
     use std::panic::{AssertUnwindSafe, catch_unwind};
 
-    let hooks = TestHooks::default();
-    hooks.allowed.set(usize::MAX);
+    let hooks = TestHooks::unlimited();
 
     let collection = vec![
         PanickyEq::new(0),
@@ -1700,6 +1639,37 @@ fn bucket_array_panic_eq_insert() {
     assert!(buckets.0[0].is_allocated());
     assert!(buckets.0[1].is_allocated());
     assert!(!buckets.0[2].is_allocated());
+}
+
+#[test]
+fn bucket_iterator() {
+    let array: [Element<i32>; 10] = Default::default();
+
+    for &i in [1, 3, 5, 7, 9].iter() {
+        unsafe { array[10 - i as usize].set(Generation(i as usize), i) };
+    }
+
+    {
+        let vec: Vec<_> =
+            unsafe { BucketIterator::new(&array, Generation(4)) }.collect();
+
+        assert_eq!(
+            vec![None, None, None, None, None,
+                 None, None, Some(&3), None, Some(&1)],
+            vec
+        );
+    }
+
+    {
+        let vec: Vec<_> =
+            unsafe { BucketIterator::new(&array, Generation(9)) }.collect();
+
+        assert_eq!(
+            vec![None, None, None, Some(&7), None,
+                 Some(&5), None, Some(&3), None, Some(&1)],
+            vec
+        );
+    }
 }
 
 }

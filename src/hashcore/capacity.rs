@@ -85,6 +85,20 @@ mod tests {
 use super::*;
 
 #[test]
+fn capacity_max_capacity() {
+    fn max_capacity(n: usize) -> usize {
+        let capacity = Capacity::new(n, 20);
+        capacity.max_capacity()
+    }
+
+    assert_eq!(512 * 1024, max_capacity(1));
+    assert_eq!(512 * 1024, max_capacity(2));
+    assert_eq!(1024 * 1024, max_capacity(3));
+    assert_eq!(1024 * 1024, max_capacity(4));
+    assert_eq!(4 * 1024 * 1024, max_capacity(16));
+}
+
+#[test]
 fn capacity_number_buckets_2() {
     fn number_buckets(n: usize) -> usize {
         let capacity = Capacity::new(2, 20);

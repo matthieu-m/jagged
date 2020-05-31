@@ -36,3 +36,15 @@ impl fmt::Display for Failure {
 
 /// Universal Result type of this library.
 pub type Result<T> = result::Result<T, Failure>;
+
+#[cfg(test)]
+mod tests {
+
+use super::*;
+
+#[test]
+fn failure_display() {
+    assert_eq!("BytesOverflow", format!("{}", Failure::BytesOverflow));
+}
+
+}

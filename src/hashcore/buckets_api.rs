@@ -47,7 +47,10 @@ impl<'a, T, H> BucketsSharedReader<'a, T, H> {
     //  Returns the current capacity of the instance.
     pub fn capacity(&self) -> usize {
         let nb_buckets = self.number_buckets();
-        self.capacity.before_bucket(BucketIndex(nb_buckets)).0
+        let capacity = self.capacity.before_bucket(BucketIndex(nb_buckets)).0;
+
+        //  Load factor 50%.
+        capacity / 2
     }
 
     //  Returns the maximum capacity achievable by the instance.
@@ -145,6 +148,14 @@ where
         write!(f, "] }}")
     }
 }
+impl<'a, T, H> fmt::Debug for BucketsSharedReader<'a, T, H>
+where
+    T: fmt::Debug
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.debug("BucketsSharedReader", f)
+    }
+}
 
 impl<'a, T, H> Eq for BucketsSharedReader<'a, T, H>
 where
@@ -162,10 +173,6 @@ where
     fn eq(&self, other: &BucketsSharedReader<'a, T, OH>) -> bool {
         if self.size != other.size {
             return false;
-        }
-
-        if self.buckets as *const _ == other.buckets as *const _ {
-            return true;
         }
 
         self.into_iter().all(|e| Some(e) == other.get(e.key()))
@@ -389,4 +396,320 @@ impl<'a, T> iter::Iterator for ElementIterator<'a, T> {
             };
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+
+use super::*;
+use super::super::buckets::MAX_BUCKETS;
+
+use crate::utils::tester::*;
+
+fn construct<T, C, H>(collection: C, capacity: Capacity, hooks: &H)
+    -> (Size, BucketArray<T>)
+    where
+        T: Key,
+        T::Key: Eq + hash::Hash,
+        C: iter::IntoIterator<Item = T>,
+        H: Allocator + hash::BuildHasher,
+{
+    let buckets = BucketArray::default();
+
+    let (size, failure) = unsafe {
+        buckets.try_extend(collection, Size(0), capacity, hooks)
+    };
+
+    assert_eq!(None, failure);
+
+    (size, buckets)
+}
+
+unsafe fn shared_reader<'a, T, H>(
+    buckets: &'a BucketArray<T>,
+    hooks: &'a H,
+    size: Size,
+    capacity: Capacity,
+)
+    -> BucketsSharedReader<'a, T, H>
+{
+    BucketsSharedReader::new(buckets, hooks, size, capacity)
+}
+
+unsafe fn shared_writer<'a, T, H>(
+    buckets: &'a BucketArray<T>,
+    hooks: &'a H,
+    size: Size,
+    capacity: Capacity,
+)
+    -> BucketsSharedWriter<'a, T, H>
+{
+    BucketsSharedWriter::new(buckets, hooks, size, capacity)
+}
+
+unsafe fn exclusive_writer<'a, T>(
+    buckets: &'a mut BucketArray<T>,
+    size: Size,
+    capacity: Capacity,
+)
+    -> BucketsExclusiveWriter<'a, T>
+{
+    BucketsExclusiveWriter::new(buckets, size, capacity)
+}
+
+#[test]
+fn reader_copy() {
+    fn ensure_copy<T: Copy>(_: T) {}
+
+    let hooks = TestHooks::unlimited();
+
+    let capacity = Capacity::new(1, MAX_BUCKETS);
+
+    let (_, buckets) =
+        construct(vec!["Hello".to_string()], capacity, &hooks);
+
+    {
+        let reader = unsafe { shared_reader(&buckets, &hooks, Size(1), capacity) };
+        ensure_copy(reader);
+    }
+
+    let mut buckets = buckets;
+    unsafe { buckets.clear(Size(1), capacity) };
+}
+
+#[test]
+fn reader_properties() {
+    let hooks = TestHooks::unlimited();
+
+    let capacity = Capacity::new(1, MAX_BUCKETS);
+
+    let (size, buckets) = construct(vec![1], capacity, &hooks);
+
+    let reader = unsafe { shared_reader(&buckets, &hooks, Size(0), capacity) };
+    assert!(reader.is_empty());
+    assert_eq!(0, reader.len());
+    assert_eq!(0, reader.number_buckets());
+
+    assert_eq!(0, reader.capacity());
+    assert_eq!(512 * 1024, reader.max_capacity());
+    assert_eq!(MAX_BUCKETS, reader.max_buckets());
+
+    let reader = unsafe { shared_reader(&buckets, &hooks, size, capacity) };
+    assert!(!reader.is_empty());
+    assert_eq!(1, reader.len());
+    assert_eq!(1, reader.number_buckets());
+
+    assert_eq!(1, reader.capacity());
+    assert_eq!(512 * 1024, reader.max_capacity());
+    assert_eq!(MAX_BUCKETS, reader.max_buckets());
+}
+
+#[test]
+fn reader_contains_key() {
+    let hooks = TestHooks::unlimited();
+
+    let capacity = Capacity::new(1, MAX_BUCKETS);
+
+    let (size, buckets) = construct(vec![1, 3, 5], capacity, &hooks);
+
+    let reader = unsafe { shared_reader(&buckets, &hooks, Size(2), capacity) };
+
+    assert!(reader.contains_key(&3));
+    assert!(!reader.contains_key(&5));  //  Not seen yet.
+    assert!(!reader.contains_key(&2));  //  Not contained.
+
+    let reader = unsafe { shared_reader(&buckets, &hooks, size, capacity) };
+
+    assert!(reader.contains_key(&3));
+    assert!(reader.contains_key(&5));
+    assert!(!reader.contains_key(&2));  //  Not contained.
+}
+
+#[test]
+fn reader_get() {
+    let hooks = TestHooks::unlimited();
+
+    let capacity = Capacity::new(1, MAX_BUCKETS);
+
+    let (size, buckets) = construct(vec![1, 3, 5], capacity, &hooks);
+
+    let reader = unsafe { shared_reader(&buckets, &hooks, Size(2), capacity) };
+
+    assert_eq!(Some(&3), reader.get(&3));
+    assert_eq!(None, reader.get(&5));   //  Not seen yet.
+    assert_eq!(None, reader.get(&2));   //  Not contained.
+
+    let reader = unsafe { shared_reader(&buckets, &hooks, size, capacity) };
+
+    assert_eq!(Some(&3), reader.get(&3));
+    assert_eq!(Some(&5), reader.get(&5));
+    assert_eq!(None, reader.get(&2));   //  Not contained.
+}
+
+#[test]
+fn reader_debug() {
+    let hooks = TestHooks::unlimited();
+
+    let capacity = Capacity::new(1, MAX_BUCKETS);
+
+    let (_, buckets) = construct(vec![1, 3, 5], capacity, &hooks);
+
+    let reader = unsafe { shared_reader(&buckets, &hooks, Size(2), capacity) };
+
+    assert_eq!(
+        "BucketsSharedReader { capacity: 2, length: 2, buckets: [[ 1, <none> ], [ 3, <none> ]] }",
+        format!("{:?}", reader)
+    );
+}
+
+#[test]
+fn reader_partialeq() {
+    #[derive(Debug, PartialEq)]
+    struct Partial(i32, f32);
+
+    impl Key for Partial {
+        type Key = i32;
+
+        fn key(&self) -> &i32 { &self.0 }
+    }
+
+    let hooks = TestHooks::unlimited();
+
+    let capacity = Capacity::new(1, MAX_BUCKETS);
+
+    let vec = vec![Partial(1, 1.0), Partial(2, 2.0), Partial(3, f32::NAN)];
+    let (_, buckets) = construct(vec, capacity, &hooks);
+
+    let left = unsafe { shared_reader(&buckets, &hooks, Size(1), capacity) };
+    let right = unsafe { shared_reader(&buckets, &hooks, Size(2), capacity) };
+
+    assert_ne!(left, right);
+
+    let left = unsafe { shared_reader(&buckets, &hooks, Size(2), capacity) };
+    let right = unsafe { shared_reader(&buckets, &hooks, Size(2), capacity) };
+
+    assert_eq!(left, right);
+
+    let left = unsafe { shared_reader(&buckets, &hooks, Size(3), capacity) };
+    let right = unsafe { shared_reader(&buckets, &hooks, Size(3), capacity) };
+
+    assert_ne!(left, right);
+}
+
+#[test]
+fn reader_iter_elements() {
+    let hooks = TestHooks::unlimited();
+
+    let capacity = Capacity::new(1, MAX_BUCKETS);
+
+    let (_, buckets) = construct(vec![1, 2, 3, 4, 5, 6], capacity, &hooks);
+
+    {
+        let reader = unsafe { shared_reader(&buckets, &hooks, Size(0), capacity) };
+
+        let vec: Vec<_> = reader.into_iter().collect();
+        assert!(vec.is_empty());
+    }
+
+    {
+        let reader = unsafe { shared_reader(&buckets, &hooks, Size(1), capacity) };
+
+        let vec: Vec<_> = reader.into_iter().collect();
+        assert_eq!(vec![&1], vec);
+    }
+
+    {
+        let reader = unsafe { shared_reader(&buckets, &hooks, Size(5), capacity) };
+
+        let vec: Vec<_> = reader.into_iter().clone().collect();
+        assert_eq!(vec![&1, &2, &3, &4, &5], vec);
+    }
+}
+
+#[test]
+fn writer_shrink() {
+    let hooks = TestHooks::unlimited();
+
+    let capacity = Capacity::new(1, MAX_BUCKETS);
+
+    let (size, mut buckets) = construct(1..7, capacity, &hooks);
+
+    {
+        let writer = unsafe { shared_writer(&buckets, &hooks, size, capacity) };
+        writer.shrink();
+    }
+
+    assert_eq!(4, hooks.allocations().len());
+
+    unsafe { buckets.clear(size, capacity) };
+
+    {
+        let writer = unsafe { shared_writer(&buckets, &hooks, Size(0), capacity) };
+        writer.shrink();
+    }
+
+    assert_eq!(0, hooks.allocations().len());
+}
+
+#[test]
+fn writer_try_reserve() {
+    let hooks = TestHooks::unlimited();
+
+    let capacity = Capacity::new(2, MAX_BUCKETS);
+
+    let (size, buckets) = construct(0..5, capacity, &hooks);
+
+    let writer = unsafe { shared_writer(&buckets, &hooks, size, capacity) };
+
+    let result = writer.try_reserve(Size(3));
+    assert_eq!(Ok(()), result);
+}
+
+#[test]
+fn writer_try_insert() {
+    let hooks = TestHooks::unlimited();
+
+    let capacity = Capacity::new(2, MAX_BUCKETS);
+
+    let (size, buckets) = construct(0..5, capacity, &hooks);
+
+    let writer = unsafe { shared_writer(&buckets, &hooks, size, capacity) };
+
+    let result = writer.try_insert(5);
+    assert_eq!(Ok((Size(6), None)), result);
+
+    let writer = unsafe { shared_writer(&buckets, &hooks, Size(6), capacity) };
+
+    let result = writer.try_insert(5);
+    assert_eq!(Ok((Size(6), Some(5))), result);
+}
+
+#[test]
+fn writer_try_extend() {
+    let hooks = TestHooks::new(5);
+
+    let capacity = Capacity::new(2, MAX_BUCKETS);
+
+    let (size, buckets) = construct(0..5, capacity, &hooks);
+
+    let writer = unsafe { shared_writer(&buckets, &hooks, size, capacity) };
+
+    let (size, failure) = writer.try_extend(5..18);
+    assert_eq!(Size(16), size);
+    assert_eq!(Some(Failure::OutOfMemory), failure);
+}
+
+#[test]
+fn exclusive_clear() {
+    let hooks = TestHooks::unlimited();
+
+    let capacity = Capacity::new(2, MAX_BUCKETS);
+
+    let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+    let (size, mut buckets) = construct(items, capacity, &hooks);
+
+    let writer = unsafe { exclusive_writer(&mut buckets, size, capacity) };
+    writer.clear();
+}
+
 }

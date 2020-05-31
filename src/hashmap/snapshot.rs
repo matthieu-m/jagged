@@ -458,7 +458,9 @@ fn trait_debug() {
     let mut sink = String::new();
     let _ = write!(sink, "{:?}", map.snapshot());
 
-    assert!(sink.starts_with("HashMapSnapshot { capacity: 16, length: 5, buckets: [["));
+    println!("{}", sink);
+
+    assert!(sink.starts_with("HashMapSnapshot { capacity: 8, length: 5, buckets: [["));
     assert!(sink.ends_with("]] }"));
 }
 

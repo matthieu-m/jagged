@@ -30,6 +30,10 @@ Subjective:
 
 Objective:
 
+-   Well tested.
+    -   Unit-tests cover over 99% of core code.
+    -   Unit-tests run cleanly under MIRI.
+    -   Unit-tests run cleanly under valgrind.
 -   Not fuzzed.
 -   Not audited.
 -   Not proven.

@@ -26,3 +26,6 @@ impl_builtin!(i64);
 impl_builtin!(u64);
 impl_builtin!(i128);
 impl_builtin!(u128);
+
+#[cfg(feature = "with-std")]
+impl_builtin!(String);
