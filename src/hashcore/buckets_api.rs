@@ -380,7 +380,7 @@ impl<'a, T> iter::Iterator for ElementIterator<'a, T> {
         }
 
         loop {
-            while let Some(e) = self.current.next() {
+            for e in self.current.by_ref() {
                 if e.is_some() {
                     return e;
                 }
@@ -443,11 +443,11 @@ mod tests {
         BucketsSharedWriter::new(buckets, hooks, size, capacity)
     }
 
-    unsafe fn exclusive_writer<'a, T>(
-        buckets: &'a mut BucketArray<T>,
+    unsafe fn exclusive_writer<T>(
+        buckets: &mut BucketArray<T>,
         size: Size,
         capacity: Capacity,
-    ) -> BucketsExclusiveWriter<'a, T> {
+    ) -> BucketsExclusiveWriter<'_, T> {
         BucketsExclusiveWriter::new(buckets, size, capacity)
     }
 

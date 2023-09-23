@@ -2,6 +2,7 @@
 name = "jagged"
 version = "0.1.0"
 authors = ["Matthieu M. <matthieu.monrocq@gmail.com>"]
+edition = '2021'
 
 [features]
 #   By default, the full-featured API is provided.

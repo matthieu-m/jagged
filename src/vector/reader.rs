@@ -295,10 +295,12 @@ impl<'a, T> ops::Index<usize> for VectorReader<'a, T> {
 #[cfg(test)]
 mod tests {
 
-    use vector::Vector;
+    use crate::vector::Vector;
 
     #[test]
     fn trait_clone() {
+        #![allow(clippy::clone_on_copy)]
+
         #[derive(Debug)]
         struct NotClonable(u8);
 
@@ -306,7 +308,7 @@ mod tests {
         vec.push(NotClonable(0));
 
         let reader = vec.reader();
-        std::mem::drop(reader.clone());
+        let _ = reader.clone();
     }
 
     #[test]
@@ -316,8 +318,8 @@ mod tests {
 
         let reader = vec.reader();
         let other = reader;
-        std::mem::drop(reader);
-        std::mem::drop(other);
+        let _ = reader;
+        let _ = other;
     }
 
     #[test]

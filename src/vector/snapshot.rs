@@ -354,10 +354,12 @@ impl<'a, T> ops::Index<usize> for VectorSnapshot<'a, T> {
 #[cfg(test)]
 mod tests {
 
-    use vector::Vector;
+    use crate::vector::Vector;
 
     #[test]
     fn trait_clone() {
+        #![allow(clippy::clone_on_copy)]
+
         #[derive(Debug)]
         struct NotClonable(u8);
 
@@ -365,7 +367,7 @@ mod tests {
         vec.push(NotClonable(0));
 
         let snapshot = vec.snapshot();
-        std::mem::drop(snapshot.clone());
+        let _ = snapshot.clone();
     }
 
     #[test]
@@ -375,8 +377,8 @@ mod tests {
 
         let snapshot = vec.snapshot();
         let other = snapshot;
-        std::mem::drop(snapshot);
-        std::mem::drop(other);
+        let _ = snapshot;
+        let _ = other;
     }
 
     #[test]

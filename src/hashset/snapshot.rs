@@ -561,12 +561,7 @@ where
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(e) = self.left.next() {
-            if !self.right.contains(e) {
-                return Some(e);
-            }
-        }
-        None
+        self.left.by_ref().find(|e| !self.right.contains(e))
     }
 }
 
@@ -638,12 +633,7 @@ where
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(e) = self.left.next() {
-            if self.right.contains(e) {
-                return Some(e);
-            }
-        }
-        None
+        self.left.by_ref().find(|e| self.right.contains(e))
     }
 }
 
@@ -687,10 +677,12 @@ where
 #[cfg(test)]
 mod tests {
 
-    use hashset::HashSet;
+    use crate::hashset::HashSet;
 
     #[test]
     fn trait_clone() {
+        #![allow(clippy::clone_on_copy)]
+
         #[derive(Eq, Hash, PartialEq)]
         struct NotClonable(u8);
 
@@ -698,7 +690,7 @@ mod tests {
         set.insert(NotClonable(0));
 
         let snapshot = set.snapshot();
-        std::mem::drop(snapshot.clone());
+        let _ = snapshot.clone();
     }
 
     #[test]
@@ -708,8 +700,8 @@ mod tests {
 
         let snapshot = set.snapshot();
         let other = snapshot;
-        std::mem::drop(snapshot);
-        std::mem::drop(other);
+        let _ = snapshot;
+        let _ = other;
     }
 
     #[test]

@@ -723,11 +723,7 @@ enum Entry<'a, T> {
 impl<'a, T> Entry<'a, T> {
     //  Returns whether the entry is occupied, or not.
     fn is_occupied(&self) -> bool {
-        if let Entry::Occupied(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Entry::Occupied(_))
     }
 
     //  Returns the element, if occupied.

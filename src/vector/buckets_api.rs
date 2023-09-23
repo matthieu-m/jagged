@@ -2,7 +2,7 @@
 
 pub use super::buckets::BucketArray;
 
-use super::root::{cmp, fmt, hash, iter};
+use super::root::{cmp, fmt, hash, iter, ptr};
 
 use super::allocator::Allocator;
 use super::buckets::MAX_BUCKETS;
@@ -142,7 +142,7 @@ impl<'a, T: PartialEq> BucketsSharedReader<'a, T> {
     fn equal_iter(&self, other: &Self) -> bool {
         debug_assert!(self.length == other.length);
 
-        for (a, b) in self.into_iter().zip(other.into_iter()) {
+        for (a, b) in self.into_iter().zip(*other) {
             if a != b {
                 return false;
             }
@@ -177,7 +177,7 @@ impl<'a, T: PartialOrd> BucketsSharedReader<'a, T> {
     }
 
     fn partial_compare_iter(&self, other: &Self) -> Option<cmp::Ordering> {
-        for (a, b) in self.into_iter().zip(other.into_iter()) {
+        for (a, b) in self.into_iter().zip(*other) {
             let result = a.partial_cmp(b);
 
             if result != Some(cmp::Ordering::Equal) {
@@ -214,7 +214,7 @@ impl<'a, T: Ord> BucketsSharedReader<'a, T> {
     }
 
     fn compare_iter(&self, other: &Self) -> cmp::Ordering {
-        for (a, b) in self.into_iter().zip(other.into_iter()) {
+        for (a, b) in self.into_iter().zip(*other) {
             let result = a.cmp(b);
 
             if result != cmp::Ordering::Equal {
@@ -266,7 +266,7 @@ impl<'a, T: PartialEq> PartialEq for BucketsSharedReader<'a, T> {
 
 impl<'a, T: Ord> Ord for BucketsSharedReader<'a, T> {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        if self.length == other.length && self.buckets as *const _ == other.buckets as *const _ {
+        if self.length == other.length && ptr::eq(self.buckets as *const _, other.buckets as *const _) {
             return cmp::Ordering::Equal;
         }
 
@@ -521,27 +521,27 @@ mod tests {
         (length, buckets)
     }
 
-    unsafe fn shared_reader<'a, T>(
-        buckets: &'a BucketArray<T>,
+    unsafe fn shared_reader<T>(
+        buckets: &BucketArray<T>,
         length: Length,
         capacity: Capacity,
-    ) -> BucketsSharedReader<'a, T> {
+    ) -> BucketsSharedReader<'_, T> {
         BucketsSharedReader::new(buckets, length, capacity)
     }
 
-    unsafe fn shared_writer<'a, T>(
-        buckets: &'a BucketArray<T>,
+    unsafe fn shared_writer<T>(
+        buckets: &BucketArray<T>,
         length: Length,
         capacity: Capacity,
-    ) -> BucketsSharedWriter<'a, T> {
+    ) -> BucketsSharedWriter<'_, T> {
         BucketsSharedWriter::new(buckets, length, capacity)
     }
 
-    unsafe fn exclusive_writer<'a, T>(
-        buckets: &'a mut BucketArray<T>,
+    unsafe fn exclusive_writer<T>(
+        buckets: &mut BucketArray<T>,
         length: Length,
         capacity: Capacity,
-    ) -> BucketsExclusiveWriter<'a, T> {
+    ) -> BucketsExclusiveWriter<'_, T> {
         BucketsExclusiveWriter::new(buckets, length, capacity)
     }
 
@@ -621,7 +621,7 @@ mod tests {
 
     #[test]
     fn reader_bucket() {
-        const EMPTY: &'static [i32] = &[];
+        const EMPTY: &[i32] = &[];
 
         let allocator = TestAllocator::unlimited();
 
@@ -1023,7 +1023,7 @@ mod tests {
 
     #[test]
     fn exclusive_bucket_mut() {
-        const EMPTY: &'static [i32] = &[];
+        const EMPTY: &[i32] = &[];
 
         let allocator = TestAllocator::unlimited();
 

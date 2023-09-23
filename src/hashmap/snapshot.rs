@@ -409,10 +409,12 @@ impl<'a, 'b, K, V, H> iter::IntoIterator for &'b HashMapSnapshot<'a, K, V, H> {
 #[cfg(test)]
 mod tests {
 
-    use hashmap::HashMap;
+    use crate::hashmap::HashMap;
 
     #[test]
     fn trait_clone() {
+        #![allow(clippy::clone_on_copy)]
+
         #[derive(Eq, Hash, PartialEq)]
         struct NotClonable(u8);
 
@@ -421,14 +423,14 @@ mod tests {
             map.insert(NotClonable(0), 2);
 
             let snapshot = map.snapshot();
-            std::mem::drop(snapshot.clone());
+            let _ = snapshot.clone();
         }
         {
             let map: HashMap<_, _> = HashMap::new();
             map.insert(2, NotClonable(0));
 
             let snapshot = map.snapshot();
-            std::mem::drop(snapshot.clone());
+            let _ = snapshot.clone();
         }
     }
 
@@ -440,8 +442,8 @@ mod tests {
 
             let snapshot = map.snapshot();
             let other = snapshot;
-            std::mem::drop(snapshot);
-            std::mem::drop(other);
+            let _ = snapshot;
+            let _ = other;
         }
         {
             let map: HashMap<_, _> = HashMap::new();
@@ -449,8 +451,8 @@ mod tests {
 
             let snapshot = map.snapshot();
             let other = snapshot;
-            std::mem::drop(snapshot);
-            std::mem::drop(other);
+            let _ = snapshot;
+            let _ = other;
         }
     }
 

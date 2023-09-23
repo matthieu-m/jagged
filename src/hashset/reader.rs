@@ -287,10 +287,12 @@ impl<'a, T: fmt::Debug, H> fmt::Debug for HashSetReader<'a, T, H> {
 #[cfg(test)]
 mod tests {
 
-    use hashset::HashSet;
+    use crate::hashset::HashSet;
 
     #[test]
     fn trait_clone() {
+        #![allow(clippy::clone_on_copy)]
+
         #[derive(Eq, Hash, PartialEq)]
         struct NotClonable(u8);
 
@@ -298,7 +300,7 @@ mod tests {
         set.insert(NotClonable(0));
 
         let reader = set.reader();
-        std::mem::drop(reader.clone());
+        let _ = reader.clone();
     }
 
     #[test]
@@ -308,8 +310,8 @@ mod tests {
 
         let reader = set.reader();
         let other = reader;
-        std::mem::drop(reader);
-        std::mem::drop(other);
+        let _ = reader;
+        let _ = other;
     }
 
     #[test]

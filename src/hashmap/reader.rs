@@ -338,10 +338,12 @@ impl<'a, K: fmt::Debug, V: fmt::Debug, H> fmt::Debug for HashMapReader<'a, K, V,
 #[cfg(test)]
 mod tests {
 
-    use hashmap::HashMap;
+    use crate::hashmap::HashMap;
 
     #[test]
     fn trait_clone() {
+        #![allow(clippy::clone_on_copy)]
+
         #[derive(Eq, Hash, PartialEq)]
         struct NotClonable(u8);
 
@@ -350,14 +352,14 @@ mod tests {
             map.insert(NotClonable(0), 2);
 
             let reader = map.reader();
-            std::mem::drop(reader.clone());
+            let _ = reader.clone();
         }
         {
             let map: HashMap<_, _> = HashMap::new();
             map.insert(2, NotClonable(0));
 
             let reader = map.reader();
-            std::mem::drop(reader.clone());
+            let _ = reader.clone();
         }
     }
 
@@ -369,8 +371,8 @@ mod tests {
 
             let reader = map.reader();
             let other = reader;
-            std::mem::drop(reader);
-            std::mem::drop(other);
+            let _ = reader;
+            let _ = other;
         }
         {
             let map: HashMap<_, _> = HashMap::new();
@@ -378,8 +380,8 @@ mod tests {
 
             let reader = map.reader();
             let other = reader;
-            std::mem::drop(reader);
-            std::mem::drop(other);
+            let _ = reader;
+            let _ = other;
         }
     }
 
