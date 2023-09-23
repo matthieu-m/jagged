@@ -5,15 +5,13 @@ use super::allocator;
 /// VectorHooks
 ///
 /// There are two important hooks for a Vector:
-/// -   The maximum number of buckets, which defines the capacity and the memory
-///     footprint.
+/// -   The maximum number of buckets, which defines the capacity and the memory footprint.
 /// -   The allocator and deallocator functions.
 ///
-/// The VectorHooks trait allows customizing allocation, but unfortunately
-/// does not allow customizing the size, as this does not quite yet work...
+/// The VectorHooks trait allows customizing allocation, but unfortunately does not allow customizing the size, as this
+/// does not quite yet work...
 ///
-/// Also see DefaultVectorHooks for the default, when the `alloc`
-/// feature is used.
+/// Also see DefaultVectorHooks for the default, when the `alloc` feature is used.
 pub trait VectorHooks: allocator::Allocator {}
 
 /// DefaultVectorHooks

@@ -4,9 +4,8 @@
 //! -   A Producer thread will intermittently add a new item to the Vector.
 //! -   A Consumer thread will intermittently receive a Snapshot of the Vector.
 //!
-//! When the Consumer thread receives a Snapshot of the Vector, it compares it
-//! with the current snapshot it has, if any, and prints the new items that
-//! were not present in the snapshot it had.
+//! When the Consumer thread receives a Snapshot of the Vector, it compares it with the current snapshot it has, if any,
+//! and prints the new items that were not present in the snapshot it had.
 
 extern crate crossbeam_utils;
 extern crate jagged;
@@ -37,8 +36,7 @@ fn main() {
                 current = Some(new);
             }
 
-            let current = current
-                .expect("Should have received at least one snapshot");
+            let current = current.expect("Should have received at least one snapshot");
 
             println!("Consumer final snapshot: {:?}", current);
 
@@ -54,5 +52,6 @@ fn main() {
 
             thread::sleep(PACE_TIME);
         }
-    }).unwrap();
+    })
+    .unwrap();
 }

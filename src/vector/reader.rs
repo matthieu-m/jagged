@@ -1,7 +1,6 @@
 //! A Reader of the Vector.
 //!
-//! The `VectorReader` is read-only, and reflects updates to the referred
-//! `Vector`.
+//! The `VectorReader` is read-only, and reflects updates to the referred `Vector`.
 
 use super::root::{fmt, ops};
 
@@ -9,12 +8,11 @@ use super::VectorSnapshot;
 
 use super::atomic::AcqRelUsize;
 use super::buckets_api::{BucketArray, BucketsSharedReader};
-use super::capacity::{Capacity, BucketIndex, ElementIndex, Length};
+use super::capacity::{BucketIndex, Capacity, ElementIndex, Length};
 
 /// `VectorReader`
 ///
-/// A `VectorReader` is an up-to-date read-only view of the `Vector` it was
-/// created from.
+/// A `VectorReader` is an up-to-date read-only view of the `Vector` it was created from.
 ///
 /// It always reflects updates to the underlying instance.
 pub struct VectorReader<'a, T> {
@@ -26,21 +24,18 @@ pub struct VectorReader<'a, T> {
 
 impl<'a, T> VectorReader<'a, T> {
     //  Creates a new instance.
-    pub(crate) fn new(
-        capacity: Capacity,
-        length: &'a AcqRelUsize,
-        buckets: &'a BucketArray<T>,
-    )
-        -> Self
-    {
-        Self { capacity, length, buckets }
+    pub(crate) fn new(capacity: Capacity, length: &'a AcqRelUsize, buckets: &'a BucketArray<T>) -> Self {
+        Self {
+            capacity,
+            length,
+            buckets,
+        }
     }
 
     /// Creates a `VectorSnapshot`.
     ///
-    /// A `VectorSnapshot` is a read-only view of the `VectorReader` instance it
-    /// is created from which it does not reflect updates. Once created, it is
-    /// immutable.
+    /// A `VectorSnapshot` is a read-only view of the `VectorReader` instance it is created from which it does not
+    /// reflect updates. Once created, it is immutable.
     ///
     /// #   Example
     ///
@@ -71,7 +66,9 @@ impl<'a, T> VectorReader<'a, T> {
     /// vec.push(1);
     /// assert!(!reader.is_empty());
     /// ```
-    pub fn is_empty(&self) -> bool { self.shared_reader().is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.shared_reader().is_empty()
+    }
 
     /// Returns the number of elements contained in the `Vector` instance.
     ///
@@ -86,7 +83,9 @@ impl<'a, T> VectorReader<'a, T> {
     /// vec.push(1);
     /// assert_eq!(1, reader.len());
     /// ```
-    pub fn len(&self) -> usize { self.shared_reader().len() }
+    pub fn len(&self) -> usize {
+        self.shared_reader().len()
+    }
 
     /// Returns the maximum capacity achievable by the `Vector` instance.
     ///
@@ -98,7 +97,9 @@ impl<'a, T> VectorReader<'a, T> {
     /// let reader = vec.reader();
     /// assert_eq!(2 * 1024 * 1024, reader.max_capacity());
     /// ```
-    pub fn max_capacity(&self) -> usize { self.shared_reader().max_capacity() }
+    pub fn max_capacity(&self) -> usize {
+        self.shared_reader().max_capacity()
+    }
 
     /// Returns the number of buckets currently used by the `Vector` instance.
     ///
@@ -127,7 +128,9 @@ impl<'a, T> VectorReader<'a, T> {
     /// let reader = vec.reader();
     /// assert_eq!(22, reader.max_buckets());
     /// ```
-    pub fn max_buckets(&self) -> usize { self.shared_reader().max_buckets() }
+    pub fn max_buckets(&self) -> usize {
+        self.shared_reader().max_buckets()
+    }
 
     /// Returns a reference to the ith element, if any.
     ///
@@ -191,9 +194,7 @@ impl<'a, T> VectorReader<'a, T> {
         let length = Length(self.length.load());
         //  Safety:
         //  -   length is less than the length of the vector.
-        unsafe {
-            BucketsSharedReader::new(self.buckets, length, self.capacity)
-        }
+        unsafe { BucketsSharedReader::new(self.buckets, length, self.capacity) }
     }
 }
 
@@ -270,7 +271,9 @@ impl<'a, T> std::panic::UnwindSafe for VectorReader<'a, T> {}
 impl<'a, T> std::panic::RefUnwindSafe for VectorReader<'a, T> {}
 
 impl<'a, T> Clone for VectorReader<'a, T> {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<'a, T> Copy for VectorReader<'a, T> {}
@@ -292,45 +295,44 @@ impl<'a, T> ops::Index<usize> for VectorReader<'a, T> {
 #[cfg(test)]
 mod tests {
 
-use vector::Vector;
+    use vector::Vector;
 
-#[test]
-fn trait_clone() {
-    #[derive(Debug)]
-    struct NotClonable(u8);
+    #[test]
+    fn trait_clone() {
+        #[derive(Debug)]
+        struct NotClonable(u8);
 
-    let vec: Vector<_> = Vector::new();
-    vec.push(NotClonable(0));
+        let vec: Vector<_> = Vector::new();
+        vec.push(NotClonable(0));
 
-    let reader = vec.reader();
-    std::mem::drop(reader.clone());
-}
+        let reader = vec.reader();
+        std::mem::drop(reader.clone());
+    }
 
-#[test]
-fn trait_copy() {
-    let vec: Vector<_> = Vector::new();
-    vec.push("Hello, World".to_string());
+    #[test]
+    fn trait_copy() {
+        let vec: Vector<_> = Vector::new();
+        vec.push("Hello, World".to_string());
 
-    let reader = vec.reader();
-    let other = reader;
-    std::mem::drop(reader);
-    std::mem::drop(other);
-}
+        let reader = vec.reader();
+        let other = reader;
+        std::mem::drop(reader);
+        std::mem::drop(other);
+    }
 
-#[test]
-fn trait_debug() {
-    use std::fmt::Write;
+    #[test]
+    fn trait_debug() {
+        use std::fmt::Write;
 
-    let vec: Vector<_> = Vector::new();
-    vec.extend([1, 2, 3, 4, 5].iter().copied());
+        let vec: Vector<_> = Vector::new();
+        vec.extend([1, 2, 3, 4, 5].iter().copied());
 
-    let mut sink = String::new();
-    let _ = write!(sink, "{:?}", vec.reader());
+        let mut sink = String::new();
+        let _ = write!(sink, "{:?}", vec.reader());
 
-    assert_eq!(
-        "VectorReader { capacity: 8, length: 5, buckets: [[1], [2], [3, 4], [5]] }",
-        sink
-    );
-}
-
+        assert_eq!(
+            "VectorReader { capacity: 8, length: 5, buckets: [[1], [2], [3, 4], [5]] }",
+            sink
+        );
+    }
 }

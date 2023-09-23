@@ -1,4 +1,4 @@
-//! The Vector capacity.
+//! The HashMap/Set capacity.
 
 use crate::utils::capacity;
 
@@ -19,14 +19,16 @@ impl Capacity {
     //
     //  Panics if `capacity_of_0` is greater than half `usize::MAX / 2 + 1`.
     pub fn new(capacity_of_0: usize, max_buckets: usize) -> Self {
-        //  With buckets loaded at half-capacity, the behavior is irregular
-        //  for buckets with a capacity of 1 -- and irregular complicates code.
+        //  With buckets loaded at half-capacity, the behavior is irregular for buckets with a capacity of 1 -- and
+        //  irregular complicates code.
         let capacity_of_0 = cmp::max(capacity_of_0, 2);
         Self(self::capacity::Capacity::new(capacity_of_0, max_buckets))
     }
 
     //  Returns the maximum number of buckets.
-    pub fn max_buckets(self) -> NumberBuckets { self.0.max_buckets() }
+    pub fn max_buckets(self) -> NumberBuckets {
+        self.0.max_buckets()
+    }
 
     //  Returns the maximum capacity.
     pub fn max_capacity(self) -> usize {
@@ -59,9 +61,7 @@ impl Capacity {
     }
 
     //  Returns the length of the initialized part of the Bucket.
-    pub fn size_bucket(self, bucket: BucketIndex, size: Size)
-        -> BucketSize
-    {
+    pub fn size_bucket(self, bucket: BucketIndex, size: Size) -> BucketSize {
         let prior = self.before_bucket(bucket);
         let current = self.of_bucket(bucket);
 
@@ -82,150 +82,149 @@ pub struct Size(pub usize);
 #[cfg(test)]
 mod tests {
 
-use super::*;
+    use super::*;
 
-#[test]
-fn capacity_max_capacity() {
-    fn max_capacity(n: usize) -> usize {
-        let capacity = Capacity::new(n, 20);
-        capacity.max_capacity()
+    #[test]
+    fn capacity_max_capacity() {
+        fn max_capacity(n: usize) -> usize {
+            let capacity = Capacity::new(n, 20);
+            capacity.max_capacity()
+        }
+
+        assert_eq!(512 * 1024, max_capacity(1));
+        assert_eq!(512 * 1024, max_capacity(2));
+        assert_eq!(1024 * 1024, max_capacity(3));
+        assert_eq!(1024 * 1024, max_capacity(4));
+        assert_eq!(4 * 1024 * 1024, max_capacity(16));
     }
 
-    assert_eq!(512 * 1024, max_capacity(1));
-    assert_eq!(512 * 1024, max_capacity(2));
-    assert_eq!(1024 * 1024, max_capacity(3));
-    assert_eq!(1024 * 1024, max_capacity(4));
-    assert_eq!(4 * 1024 * 1024, max_capacity(16));
-}
+    #[test]
+    fn capacity_number_buckets_2() {
+        fn number_buckets(n: usize) -> usize {
+            let capacity = Capacity::new(2, 20);
+            capacity.number_buckets(Size(n)).0
+        }
 
-#[test]
-fn capacity_number_buckets_2() {
-    fn number_buckets(n: usize) -> usize {
-        let capacity = Capacity::new(2, 20);
-        capacity.number_buckets(Size(n)).0
+        //  [0] = [X.]
+        //  [1] = [X.]
+        //  [2] = [XX..]
+        //  [3] = [XXXX....]
+        //  ...
+
+        assert_eq!(0, number_buckets(0));
+        assert_eq!(1, number_buckets(1));
+        assert_eq!(2, number_buckets(2));
+        assert_eq!(3, number_buckets(3));
+        assert_eq!(3, number_buckets(4));
+        assert_eq!(4, number_buckets(5));
+        assert_eq!(4, number_buckets(8));
+        assert_eq!(5, number_buckets(9));
+        assert_eq!(5, number_buckets(16));
+        assert_eq!(6, number_buckets(17));
+
+        const MAX_CAPACITY: usize = 1usize << 19;
+
+        assert_eq!(20, number_buckets(MAX_CAPACITY));
+        assert_eq!(21, number_buckets(MAX_CAPACITY + 1));
+        assert_eq!(21, number_buckets(usize::MAX / 2 + 1));
+        assert_eq!(21, number_buckets(usize::MAX));
     }
 
-    //  [0] = [X.]
-    //  [1] = [X.]
-    //  [2] = [XX..]
-    //  [3] = [XXXX....]
-    //  ...
+    #[test]
+    fn capacity_number_buckets_4() {
+        fn number_buckets(n: usize) -> usize {
+            let capacity = Capacity::new(4, 20);
+            capacity.number_buckets(Size(n)).0
+        }
 
-    assert_eq!(0, number_buckets(0));
-    assert_eq!(1, number_buckets(1));
-    assert_eq!(2, number_buckets(2));
-    assert_eq!(3, number_buckets(3));
-    assert_eq!(3, number_buckets(4));
-    assert_eq!(4, number_buckets(5));
-    assert_eq!(4, number_buckets(8));
-    assert_eq!(5, number_buckets(9));
-    assert_eq!(5, number_buckets(16));
-    assert_eq!(6, number_buckets(17));
+        //  [0] = [XX..]
+        //  [1] = [XX..]
+        //  [2] = [XXXX....]
+        //  [3] = [XXXXXXXX........]
+        //  ...
 
-    const MAX_CAPACITY: usize = 1usize << 19;
+        assert_eq!(0, number_buckets(0));
+        assert_eq!(1, number_buckets(1));
+        assert_eq!(1, number_buckets(2));
+        assert_eq!(2, number_buckets(3));
+        assert_eq!(2, number_buckets(4));
+        assert_eq!(3, number_buckets(5));
+        assert_eq!(3, number_buckets(8));
+        assert_eq!(4, number_buckets(9));
+        assert_eq!(4, number_buckets(16));
+        assert_eq!(5, number_buckets(17));
 
-    assert_eq!(20, number_buckets(MAX_CAPACITY));
-    assert_eq!(21, number_buckets(MAX_CAPACITY + 1));
-    assert_eq!(21, number_buckets(usize::MAX / 2 + 1));
-    assert_eq!(21, number_buckets(usize::MAX));
-}
+        const MAX_CAPACITY: usize = 1usize << 20;
 
-#[test]
-fn capacity_number_buckets_4() {
-    fn number_buckets(n: usize) -> usize {
-        let capacity = Capacity::new(4, 20);
-        capacity.number_buckets(Size(n)).0
+        assert_eq!(20, number_buckets(MAX_CAPACITY));
+        assert_eq!(21, number_buckets(MAX_CAPACITY + 1));
+        assert_eq!(21, number_buckets(usize::MAX / 2 + 1));
+        assert_eq!(21, number_buckets(usize::MAX));
     }
 
-    //  [0] = [XX..]
-    //  [1] = [XX..]
-    //  [2] = [XXXX....]
-    //  [3] = [XXXXXXXX........]
-    //  ...
+    #[test]
+    fn capacity_size_bucket_2() {
+        fn size_bucket(bucket: usize, n: usize) -> usize {
+            let capacity = Capacity::new(2, 20);
+            capacity.size_bucket(BucketIndex(bucket), Size(n)).0
+        }
 
-    assert_eq!(0, number_buckets(0));
-    assert_eq!(1, number_buckets(1));
-    assert_eq!(1, number_buckets(2));
-    assert_eq!(2, number_buckets(3));
-    assert_eq!(2, number_buckets(4));
-    assert_eq!(3, number_buckets(5));
-    assert_eq!(3, number_buckets(8));
-    assert_eq!(4, number_buckets(9));
-    assert_eq!(4, number_buckets(16));
-    assert_eq!(5, number_buckets(17));
+        //  [0] = [X.]
+        //  [1] = [X.]
+        //  [2] = [XX..]
+        //  [3] = [XXXX....]
+        //  ...
 
-    const MAX_CAPACITY: usize = 1usize << 20;
+        assert_eq!(0, size_bucket(0, 0));
+        assert_eq!(1, size_bucket(0, 1));
+        assert_eq!(1, size_bucket(0, 2));
 
-    assert_eq!(20, number_buckets(MAX_CAPACITY));
-    assert_eq!(21, number_buckets(MAX_CAPACITY + 1));
-    assert_eq!(21, number_buckets(usize::MAX / 2 + 1));
-    assert_eq!(21, number_buckets(usize::MAX));
-}
+        assert_eq!(0, size_bucket(1, 1));
+        assert_eq!(1, size_bucket(1, 2));
+        assert_eq!(1, size_bucket(1, 3));
 
-#[test]
-fn capacity_size_bucket_2() {
-    fn size_bucket(bucket: usize, n: usize) -> usize {
-        let capacity = Capacity::new(2, 20);
-        capacity.size_bucket(BucketIndex(bucket), Size(n)).0
+        assert_eq!(0, size_bucket(2, 2));
+        assert_eq!(1, size_bucket(2, 3));
+        assert_eq!(2, size_bucket(2, 4));
+        assert_eq!(2, size_bucket(2, 5));
+
+        assert_eq!(0, size_bucket(3, 4));
+        assert_eq!(1, size_bucket(3, 5));
+        assert_eq!(4, size_bucket(3, 8));
+        assert_eq!(4, size_bucket(3, 9));
     }
 
-    //  [0] = [X.]
-    //  [1] = [X.]
-    //  [2] = [XX..]
-    //  [3] = [XXXX....]
-    //  ...
+    #[test]
+    fn capacity_size_bucket_4() {
+        fn size_bucket(bucket: usize, n: usize) -> usize {
+            let capacity = Capacity::new(4, 20);
+            capacity.size_bucket(BucketIndex(bucket), Size(n)).0
+        }
 
-    assert_eq!(0, size_bucket(0, 0));
-    assert_eq!(1, size_bucket(0, 1));
-    assert_eq!(1, size_bucket(0, 2));
+        //  [0] = [XX..]
+        //  [1] = [XX..]
+        //  [2] = [XXXX....]
+        //  [3] = [XXXXXXXX........]
+        //  ...
 
-    assert_eq!(0, size_bucket(1, 1));
-    assert_eq!(1, size_bucket(1, 2));
-    assert_eq!(1, size_bucket(1, 3));
+        assert_eq!(0, size_bucket(0, 0));
+        assert_eq!(1, size_bucket(0, 1));
+        assert_eq!(2, size_bucket(0, 2));
+        assert_eq!(2, size_bucket(0, 3));
 
-    assert_eq!(0, size_bucket(2, 2));
-    assert_eq!(1, size_bucket(2, 3));
-    assert_eq!(2, size_bucket(2, 4));
-    assert_eq!(2, size_bucket(2, 5));
+        assert_eq!(0, size_bucket(1, 2));
+        assert_eq!(1, size_bucket(1, 3));
+        assert_eq!(2, size_bucket(1, 4));
+        assert_eq!(2, size_bucket(1, 5));
 
-    assert_eq!(0, size_bucket(3, 4));
-    assert_eq!(1, size_bucket(3, 5));
-    assert_eq!(4, size_bucket(3, 8));
-    assert_eq!(4, size_bucket(3, 9));
-}
+        assert_eq!(0, size_bucket(2, 4));
+        assert_eq!(1, size_bucket(2, 5));
+        assert_eq!(4, size_bucket(2, 8));
+        assert_eq!(4, size_bucket(2, 9));
 
-#[test]
-fn capacity_size_bucket_4() {
-    fn size_bucket(bucket: usize, n: usize) -> usize {
-        let capacity = Capacity::new(4, 20);
-        capacity.size_bucket(BucketIndex(bucket), Size(n)).0
+        assert_eq!(0, size_bucket(3, 8));
+        assert_eq!(1, size_bucket(3, 9));
+        assert_eq!(8, size_bucket(3, 16));
+        assert_eq!(8, size_bucket(3, 17));
     }
-
-    //  [0] = [XX..]
-    //  [1] = [XX..]
-    //  [2] = [XXXX....]
-    //  [3] = [XXXXXXXX........]
-    //  ...
-
-    assert_eq!(0, size_bucket(0, 0));
-    assert_eq!(1, size_bucket(0, 1));
-    assert_eq!(2, size_bucket(0, 2));
-    assert_eq!(2, size_bucket(0, 3));
-
-    assert_eq!(0, size_bucket(1, 2));
-    assert_eq!(1, size_bucket(1, 3));
-    assert_eq!(2, size_bucket(1, 4));
-    assert_eq!(2, size_bucket(1, 5));
-
-    assert_eq!(0, size_bucket(2, 4));
-    assert_eq!(1, size_bucket(2, 5));
-    assert_eq!(4, size_bucket(2, 8));
-    assert_eq!(4, size_bucket(2, 9));
-
-    assert_eq!(0, size_bucket(3, 8));
-    assert_eq!(1, size_bucket(3, 9));
-    assert_eq!(8, size_bucket(3, 16));
-    assert_eq!(8, size_bucket(3, 17));
-}
-
 }

@@ -1,20 +1,17 @@
 //! A Snapshot of the Vector.
 //!
-//! The Snapshot is synchronization-free, and does not reflect updates to the
-//! referred Vector.
+//! The Snapshot is synchronization-free, and does not reflect updates to the referred Vector.
 
 use super::root::{cmp, fmt, hash, iter, ops};
 
-use super::buckets_api::{BucketsSharedReader, BucketIterator, ElementIterator};
+use super::buckets_api::{BucketIterator, BucketsSharedReader, ElementIterator};
 use super::capacity::{BucketIndex, ElementIndex};
 
 /// `VectorSnapshot`
 ///
-/// A `VectorSnapshot` is a snapshot of the state of the underlying `Vector` at
-/// the moment the instance is created.
+/// A `VectorSnapshot` is a snapshot of the state of the underlying `Vector` at the moment the instance is created.
 ///
-/// It never reflects further updates to the `Vector` instance it was created
-/// from.
+/// It never reflects further updates to the `Vector` instance it was created from.
 pub struct VectorSnapshot<'a, T> {
     reader: BucketsSharedReader<'a, T>,
 }
@@ -44,7 +41,9 @@ impl<'a, T> VectorSnapshot<'a, T> {
     /// let snapshot = vec.snapshot();
     /// assert!(!snapshot.is_empty());
     /// ```
-    pub fn is_empty(&self) -> bool { self.reader.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.reader.is_empty()
+    }
 
     /// Returns the number of elements contained in the `Vector` instance.
     ///
@@ -65,7 +64,9 @@ impl<'a, T> VectorSnapshot<'a, T> {
     /// let snapshot = vec.snapshot();
     /// assert_eq!(1, snapshot.len());
     /// ```
-    pub fn len(&self) -> usize { self.reader.len() }
+    pub fn len(&self) -> usize {
+        self.reader.len()
+    }
 
     /// Returns the maximum capacity achievable by the `Vector` instance.
     ///
@@ -77,7 +78,9 @@ impl<'a, T> VectorSnapshot<'a, T> {
     /// let snapshot = vec.snapshot();
     /// assert_eq!(2 * 1024 * 1024, snapshot.max_capacity());
     /// ```
-    pub fn max_capacity(&self) -> usize { self.reader.max_capacity() }
+    pub fn max_capacity(&self) -> usize {
+        self.reader.max_capacity()
+    }
 
     /// Returns the number of buckets currently used.
     ///
@@ -98,7 +101,9 @@ impl<'a, T> VectorSnapshot<'a, T> {
     /// let snapshot = vec.snapshot();
     /// assert_eq!(4, snapshot.number_buckets());
     /// ```
-    pub fn number_buckets(&self) -> usize { self.reader.number_buckets() }
+    pub fn number_buckets(&self) -> usize {
+        self.reader.number_buckets()
+    }
 
     /// Returns the maximum number of buckets.
     ///
@@ -110,7 +115,9 @@ impl<'a, T> VectorSnapshot<'a, T> {
     /// let snapshot = vec.snapshot();
     /// assert_eq!(22, snapshot.max_buckets());
     /// ```
-    pub fn max_buckets(&self) -> usize { self.reader.max_buckets() }
+    pub fn max_buckets(&self) -> usize {
+        self.reader.max_buckets()
+    }
 
     ///  Returns a reference to the ith element, if any.
     ///
@@ -183,8 +190,8 @@ impl<'a, T> VectorSnapshot<'a, T> {
 
     /// Returns an iterator to iterate over the buckets, yielding slices.
     ///
-    /// In general, this iterator should be used when performance dictates it,
-    /// otherwise the element-wise iterator should be more convenient.
+    /// In general, this iterator should be used when performance dictates it, otherwise the element-wise iterator
+    /// should be more convenient.
     ///
     /// #   Example
     ///
@@ -226,8 +233,7 @@ impl<'a, T> VectorSnapshot<'a, T> {
 ///
 /// #   Example of not Send.
 ///
-/// Types that are not Sync, however, cannot share their references across
-/// threads.
+/// Types that are not Sync, however, cannot share their references across threads.
 ///
 /// ```compile_fail
 /// # use std::rc::Rc;
@@ -259,8 +265,7 @@ unsafe impl<'a, T: Sync> Send for VectorSnapshot<'a, T> {}
 ///
 /// #   Example of not Sync.
 ///
-/// Types that are not Sync, however, cannot share their references across
-/// threads.
+/// Types that are not Sync, however, cannot share their references across threads.
 ///
 /// ```compile_fail
 /// # use std::rc::Rc;
@@ -281,7 +286,9 @@ impl<'a, T> std::panic::UnwindSafe for VectorSnapshot<'a, T> {}
 impl<'a, T> std::panic::RefUnwindSafe for VectorSnapshot<'a, T> {}
 
 impl<'a, T> Clone for VectorSnapshot<'a, T> {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<'a, T> Copy for VectorSnapshot<'a, T> {}
@@ -301,7 +308,9 @@ impl<'a, T: hash::Hash> hash::Hash for VectorSnapshot<'a, T> {
 impl<'a, T: Eq> Eq for VectorSnapshot<'a, T> {}
 
 impl<'a, T: PartialEq> PartialEq for VectorSnapshot<'a, T> {
-    fn eq(&self, other: &Self) -> bool { self.reader.eq(&other.reader) }
+    fn eq(&self, other: &Self) -> bool {
+        self.reader.eq(&other.reader)
+    }
 }
 
 impl<'a, T: Ord> Ord for VectorSnapshot<'a, T> {
@@ -345,123 +354,122 @@ impl<'a, T> ops::Index<usize> for VectorSnapshot<'a, T> {
 #[cfg(test)]
 mod tests {
 
-use vector::Vector;
+    use vector::Vector;
 
-#[test]
-fn trait_clone() {
-    #[derive(Debug)]
-    struct NotClonable(u8);
+    #[test]
+    fn trait_clone() {
+        #[derive(Debug)]
+        struct NotClonable(u8);
 
-    let vec: Vector<_> = Vector::new();
-    vec.push(NotClonable(0));
+        let vec: Vector<_> = Vector::new();
+        vec.push(NotClonable(0));
 
-    let snapshot = vec.snapshot();
-    std::mem::drop(snapshot.clone());
-}
-
-#[test]
-fn trait_copy() {
-    let vec: Vector<_> = Vector::new();
-    vec.push("Hello, World".to_string());
-
-    let snapshot = vec.snapshot();
-    let other = snapshot;
-    std::mem::drop(snapshot);
-    std::mem::drop(other);
-}
-
-#[test]
-fn trait_debug() {
-    use std::fmt::Write;
-
-    let vec: Vector<_> = Vector::new();
-    vec.extend([1, 2, 3, 4, 5].iter().copied());
-
-    let mut sink = String::new();
-    let _ = write!(sink, "{:?}", vec.snapshot());
-
-    assert_eq!(
-        "VectorSnapshot { capacity: 8, length: 5, buckets: [[1], [2], [3, 4], [5]] }",
-        sink
-    );
-}
-
-#[test]
-fn trait_hash() {
-    fn ensure_hash<T: std::hash::Hash>(_: T) {}
-
-    let vec: Vector<_> = Vector::new();
-    vec.push(1);
-
-    ensure_hash(vec.snapshot());
-}
-
-#[test]
-fn trait_partial_eq() {
-    let left: Vector<_> = Vector::new();
-    left.push(1.0);
-
-    let right: Vector<_> = Vector::new();
-    right.push(1.0);
-
-    assert_eq!(left.snapshot(), right.snapshot());
-
-    left.push(2.0);
-
-    assert_ne!(left.snapshot(), right.snapshot());
-}
-
-#[test]
-fn trait_partial_ord() {
-    use std::cmp::Ordering;
-
-    fn partial_cmp(left: f32, right: f32) -> Option<Ordering> {
-        let leftv: Vector<_> = Vector::new();
-        leftv.push(left);
-
-        let rightv: Vector<_> = Vector::new();
-        rightv.push(right);
-
-        leftv.snapshot().partial_cmp(&rightv.snapshot())
+        let snapshot = vec.snapshot();
+        std::mem::drop(snapshot.clone());
     }
 
-    assert_eq!(None, partial_cmp(1.0, std::f32::NAN));
-    assert_eq!(Some(Ordering::Less), partial_cmp(1.0, 2.0));
-    assert_eq!(Some(Ordering::Equal), partial_cmp(2.0, 2.0));
-    assert_eq!(Some(Ordering::Greater), partial_cmp(3.0, 2.0));
-}
+    #[test]
+    fn trait_copy() {
+        let vec: Vector<_> = Vector::new();
+        vec.push("Hello, World".to_string());
 
-#[test]
-fn trait_ord() {
-    use std::cmp::Ordering;
-
-    fn total_cmp(left: i32, right: i32) -> Ordering {
-        let leftv: Vector<_> = Vector::new();
-        leftv.push(left);
-
-        let rightv: Vector<_> = Vector::new();
-        rightv.push(right);
-
-        leftv.snapshot().cmp(&rightv.snapshot())
+        let snapshot = vec.snapshot();
+        let other = snapshot;
+        std::mem::drop(snapshot);
+        std::mem::drop(other);
     }
 
-    assert_eq!(Ordering::Less, total_cmp(1, 2));
-    assert_eq!(Ordering::Equal, total_cmp(2, 2));
-    assert_eq!(Ordering::Greater, total_cmp(3, 2));
-}
+    #[test]
+    fn trait_debug() {
+        use std::fmt::Write;
 
-#[test]
-fn trait_into_iterator() {
-    let vec: Vector<_> = Vector::new();
-    vec.push(1);
+        let vec: Vector<_> = Vector::new();
+        vec.extend([1, 2, 3, 4, 5].iter().copied());
 
-    for &i in vec.snapshot() {
-        assert_eq!(1, i);
+        let mut sink = String::new();
+        let _ = write!(sink, "{:?}", vec.snapshot());
+
+        assert_eq!(
+            "VectorSnapshot { capacity: 8, length: 5, buckets: [[1], [2], [3, 4], [5]] }",
+            sink
+        );
     }
 
-    for &i in &vec.snapshot() {
-        assert_eq!(1, i);
-    }
-}
+    #[test]
+    fn trait_hash() {
+        fn ensure_hash<T: std::hash::Hash>(_: T) {}
 
+        let vec: Vector<_> = Vector::new();
+        vec.push(1);
+
+        ensure_hash(vec.snapshot());
+    }
+
+    #[test]
+    fn trait_partial_eq() {
+        let left: Vector<_> = Vector::new();
+        left.push(1.0);
+
+        let right: Vector<_> = Vector::new();
+        right.push(1.0);
+
+        assert_eq!(left.snapshot(), right.snapshot());
+
+        left.push(2.0);
+
+        assert_ne!(left.snapshot(), right.snapshot());
+    }
+
+    #[test]
+    fn trait_partial_ord() {
+        use std::cmp::Ordering;
+
+        fn partial_cmp(left: f32, right: f32) -> Option<Ordering> {
+            let leftv: Vector<_> = Vector::new();
+            leftv.push(left);
+
+            let rightv: Vector<_> = Vector::new();
+            rightv.push(right);
+
+            leftv.snapshot().partial_cmp(&rightv.snapshot())
+        }
+
+        assert_eq!(None, partial_cmp(1.0, std::f32::NAN));
+        assert_eq!(Some(Ordering::Less), partial_cmp(1.0, 2.0));
+        assert_eq!(Some(Ordering::Equal), partial_cmp(2.0, 2.0));
+        assert_eq!(Some(Ordering::Greater), partial_cmp(3.0, 2.0));
+    }
+
+    #[test]
+    fn trait_ord() {
+        use std::cmp::Ordering;
+
+        fn total_cmp(left: i32, right: i32) -> Ordering {
+            let leftv: Vector<_> = Vector::new();
+            leftv.push(left);
+
+            let rightv: Vector<_> = Vector::new();
+            rightv.push(right);
+
+            leftv.snapshot().cmp(&rightv.snapshot())
+        }
+
+        assert_eq!(Ordering::Less, total_cmp(1, 2));
+        assert_eq!(Ordering::Equal, total_cmp(2, 2));
+        assert_eq!(Ordering::Greater, total_cmp(3, 2));
+    }
+
+    #[test]
+    fn trait_into_iterator() {
+        let vec: Vector<_> = Vector::new();
+        vec.push(1);
+
+        for &i in vec.snapshot() {
+            assert_eq!(1, i);
+        }
+
+        for &i in &vec.snapshot() {
+            assert_eq!(1, i);
+        }
+    }
 }

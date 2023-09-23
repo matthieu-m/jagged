@@ -3,7 +3,7 @@
 use super::root::{borrow, cell, hash, hint, iter, marker, mem, ptr, slice};
 
 use super::allocator::{Allocator, Layout};
-use super::capacity::{Capacity, BucketCapacity, BucketIndex, NumberBuckets, Size};
+use super::capacity::{BucketCapacity, BucketIndex, Capacity, NumberBuckets, Size};
 use super::element::{Element, Generation};
 use super::failure::{Failure, Result};
 use super::key::Key;
@@ -24,7 +24,9 @@ impl<T> BucketArray<T> {
 
     //  Returns the number of buckets currently allocated.
     pub fn number_buckets(&self) -> NumberBuckets {
-        let result = self.0.iter()
+        let result = self
+            .0
+            .iter()
             .position(|bucket| !bucket.is_allocated())
             .unwrap_or(MAX_BUCKETS);
         NumberBuckets(result)
@@ -60,12 +62,7 @@ impl<T> BucketArray<T> {
     //  -   Assumes a single writer thread.
     //  -   Assumes that `size` is exactly the current size of the collection.
     //  -   Assumes that `capacity` matches the capacity of the collection.
-    pub unsafe fn shrink<A>(
-        &self,
-        size: Size,
-        capacity: Capacity,
-        allocator: &A,
-    )
+    pub unsafe fn shrink<A>(&self, size: Size, capacity: Capacity, allocator: &A)
     where
         A: Allocator,
     {
@@ -97,14 +94,7 @@ impl<T> BucketArray<T> {
     //
     //  -   Assumes a single writer thread.
     //  -   Assumes that `capacity` matches the capacity of the vector.
-    pub unsafe fn try_reserve<A>(
-        &self,
-        extra: Size,
-        size: Size,
-        capacity: Capacity,
-        allocator: &A,
-    )
-        -> Result<()>
+    pub unsafe fn try_reserve<A>(&self, extra: Size, size: Size, capacity: Capacity, allocator: &A) -> Result<()>
     where
         A: Allocator,
     {
@@ -132,14 +122,7 @@ impl<T> BucketArray<T> {
     //
     //  -   Assumes that `size` is less than the current size of the collection.
     //  -   Assumes that `capacity` matches the capacity of the collection.
-    pub unsafe fn get<Q, H>(
-        &self,
-        key: &Q,
-        size: Size,
-        capacity: Capacity,
-        hook: &H,
-    )
-        ->  Option<&T>
+    pub unsafe fn get<Q, H>(&self, key: &Q, size: Size, capacity: Capacity, hook: &H) -> Option<&T>
     where
         T: Key,
         T::Key: Borrow<Q>,
@@ -150,7 +133,8 @@ impl<T> BucketArray<T> {
 
         let entry = self.entry(key, hash, size, capacity);
 
-        entry.and_then(|e| e.occupied())
+        entry
+            .and_then(|e| e.occupied())
             //  Safety:
             //  -   The element is initialized, since the entry is occupied.
             .map(|e| e.get_unchecked())
@@ -167,14 +151,7 @@ impl<T> BucketArray<T> {
     //
     //  -   Assumes that `size` is less than the current size of the collection.
     //  -   Assumes that `capacity` matches the capacity of the collection.
-    pub unsafe fn get_mut<Q, H>(
-        &mut self,
-        key: &Q,
-        size: Size,
-        capacity: Capacity,
-        hook: &H,
-    )
-        ->  Option<&mut T>
+    pub unsafe fn get_mut<Q, H>(&mut self, key: &Q, size: Size, capacity: Capacity, hook: &H) -> Option<&mut T>
     where
         T: Key,
         T::Key: Borrow<Q>,
@@ -209,8 +186,7 @@ impl<T> BucketArray<T> {
         size: Size,
         capacity: Capacity,
         hook: &H,
-    )
-        -> Result<(Size, Option<T>)>
+    ) -> Result<(Size, Option<T>)>
     where
         T: Key,
         T::Key: Eq + hash::Hash,
@@ -230,13 +206,10 @@ impl<T> BucketArray<T> {
                 Entry::Occupied(_) => Ok((size, Some(element))),
                 //  A location for insertion was found.
                 Entry::Vacant(location) => {
-                    debug_assert!(
-                        capacity.number_buckets(size) ==
-                        capacity.number_buckets(new_size)
-                    );
+                    debug_assert!(capacity.number_buckets(size) == capacity.number_buckets(new_size));
                     location.set(generation, element);
                     Ok((new_size, None))
-                },
+                }
             };
 
             return result;
@@ -266,7 +239,7 @@ impl<T> BucketArray<T> {
             Entry::Vacant(location) => {
                 location.set(generation, element);
                 Ok((new_size, None))
-            },
+            }
             //  Safety:
             //  -   A newly allocated bucket has no element.
             Entry::Occupied(_) => hint::unreachable_unchecked(),
@@ -279,8 +252,7 @@ impl<T> BucketArray<T> {
     //
     //  #   Error
     //
-    //  If the collection cannot be fully extended, this may leave the collection
-    //  modified.
+    //  If the collection cannot be fully extended, this may leave the collection modified.
     //
     //  #   Safety
     //
@@ -293,25 +265,21 @@ impl<T> BucketArray<T> {
         size: Size,
         capacity: Capacity,
         hooks: &H,
-    )
-        -> (Size, Option<Failure>)
+    ) -> (Size, Option<Failure>)
     where
         C: IntoIterator<Item = T>,
         T: Key,
         T::Key: Eq + hash::Hash,
         H: Allocator + hash::BuildHasher,
     {
-        //  In a typical HashMap/Set implementation, the collection would be
-        //  queried to ascertain its minimal length, in an attempt to minimize
-        //  the number of re-allocations.
+        //  In a typical HashMap/Set implementation, the collection would be queried to ascertain its minimal length, in
+        //  an attempt to minimize the number of re-allocations.
         //
-        //  There is no re-allocation, ever, in Vector, so this step is
-        //  unnecessary.
+        //  There is no re-allocation, ever, in Vector, so this step is unnecessary.
 
         let mut size = size;
 
-        //  TODO: optimize to avoid repeated computations to obtain the current
-        //  slice.
+        //  TODO: optimize to avoid repeated computations to obtain the current slice.
         for e in collection {
             size = match self.try_insert(e, size, capacity, hooks) {
                 Err(error) => return (size, Some(error)),
@@ -334,9 +302,7 @@ impl<T> BucketArray<T> {
         bucket: BucketIndex,
         generation: Generation,
         capacity: Capacity,
-    )
-        -> BucketIterator<'_, T>
-    {
+    ) -> BucketIterator<'_, T> {
         debug_assert!(bucket.0 < capacity.max_buckets().0);
 
         let capacity = capacity.of_bucket(bucket);
@@ -360,14 +326,7 @@ impl<T> BucketArray<T> {
     //
     //  -   Assumes that `generation` is less than the current size of the collection.
     //  -   Assumes that `capacity` matches the capacity of the collection.
-    unsafe fn entry<Q>(
-        &self,
-        key: &Q,
-        hash: Hash,
-        size: Size,
-        capacity: Capacity,
-    )
-        ->  Option<Entry<'_, T>>
+    unsafe fn entry<Q>(&self, key: &Q, hash: Hash, size: Size, capacity: Capacity) -> Option<Entry<'_, T>>
     where
         T: Key,
         T::Key: Borrow<Q>,
@@ -380,8 +339,7 @@ impl<T> BucketArray<T> {
             return None;
         }
 
-        //  We only ever insert in the last bucket, as all previous buckets are
-        //  full.
+        //  We only ever insert in the last bucket, as all previous buckets are full.
         let last_index = BucketIndex(nb_buckets.0 - 1);
         let last_capacity = capacity.of_bucket(last_index);
 
@@ -398,9 +356,8 @@ impl<T> BucketArray<T> {
             return Some(entry);
         }
 
-        //  Iterate in reverse order as the latter buckets contain the most
-        //  elements, and thus are more likely to contain the element of
-        //  interest.
+        //  Iterate in reverse order as the latter buckets contain the most elements, and thus are more likely to
+        //  contain the element of interest.
         for bucket in (0..last_index.0).rev() {
             let capacity = capacity.of_bucket(BucketIndex(bucket));
 
@@ -426,8 +383,7 @@ impl<T> BucketArray<T> {
         }
     }
 
-    //  Initializes the next bucket, if necessary, returns the new number of
-    //  buckets.
+    //  Initializes the next bucket, if necessary, returns the new number of buckets.
     //
     //  #   Safety
     //
@@ -441,9 +397,7 @@ impl<T> BucketArray<T> {
         nb_buckets: NumberBuckets,
         capacity: Capacity,
         allocator: &A,
-    )
-        -> Result<NumberBuckets>
-    {
+    ) -> Result<NumberBuckets> {
         if nb_buckets >= capacity.max_buckets() {
             return Err(Failure::OutOfBuckets);
         }
@@ -503,7 +457,10 @@ impl<'a, T> BucketIterator<'a, T> {
 
 impl<'a, T> Clone for BucketIterator<'a, T> {
     fn clone(&self) -> Self {
-        BucketIterator { bucket: self.bucket, generation: self.generation }
+        BucketIterator {
+            bucket: self.bucket,
+            generation: self.generation,
+        }
     }
 }
 
@@ -536,7 +493,9 @@ struct Bucket<T>(cell::Cell<*mut Element<T>>, marker::PhantomData<T>);
 
 impl<T> Bucket<T> {
     //  Returns whether the bucket is allocated, or not.
-    fn is_allocated(&self) -> bool { !self.0.get().is_null() }
+    fn is_allocated(&self) -> bool {
+        !self.0.get().is_null()
+    }
 
     //  Allocates a bucket of the given capacity.
     //
@@ -545,13 +504,7 @@ impl<T> Bucket<T> {
     //  #   Safety
     //
     //  -   Assumes a single writer thread.
-    unsafe fn allocate<A: Allocator>(
-        &self,
-        capacity: BucketCapacity,
-        allocator: &A,
-    )
-        -> Result<()>
-    {
+    unsafe fn allocate<A: Allocator>(&self, capacity: BucketCapacity, allocator: &A) -> Result<()> {
         //  May already be allocated.
         if self.is_allocated() {
             return Ok(());
@@ -563,7 +516,9 @@ impl<T> Bucket<T> {
         //  -   The layout is valid.
         let ptr = allocator.allocate(layout);
 
-        if ptr.is_null() { return Err(Failure::OutOfMemory) }
+        if ptr.is_null() {
+            return Err(Failure::OutOfMemory);
+        }
 
         //  Safety:
         //  -   The pointer is correctly aligned.
@@ -587,12 +542,7 @@ impl<T> Bucket<T> {
     //
     //  -   Assumes a single writer thread.
     //  -   Assumes that the capacity matches that of the allocation.
-    unsafe fn deallocate<A: Allocator>(
-        &self,
-        capacity: BucketCapacity,
-        allocator: &A,
-    )
-    {
+    unsafe fn deallocate<A: Allocator>(&self, capacity: BucketCapacity, allocator: &A) {
         if !self.is_allocated() {
             return;
         }
@@ -604,15 +554,14 @@ impl<T> Bucket<T> {
                 //  -   Cannot error, it succeeded during the allocation.
                 debug_assert!(false, "{:?} succeeded in allocation!", capacity);
                 std::hint::unreachable_unchecked()
-            },
+            }
         };
 
         let ptr = self.0.get();
 
         //  Pre-pooping your pants.
         //
-        //  If `deallocate` panicks, there is no guarantee the pointer is still
-        //  usable.
+        //  If `deallocate` panicks, there is no guarantee the pointer is still usable.
         self.0.set(ptr::null_mut());
 
         //  Safety:
@@ -676,8 +625,7 @@ impl<T> Bucket<T> {
         hash: Hash,
         generation: Generation,
         capacity: BucketCapacity,
-    )
-        ->  Option<&Element<T>>
+    ) -> Option<&Element<T>>
     where
         T: Key,
         T::Key: Borrow<Q>,
@@ -695,14 +643,7 @@ impl<T> Bucket<T> {
     //
     //  -   Assumes that `generation` is less than the current size of the collection.
     //  -   Assumes that `capacity` matches the capacity of the collection.
-    unsafe fn entry<Q>(
-        &self,
-        key: &Q,
-        hash: Hash,
-        generation: Generation,
-        capacity: BucketCapacity,
-    )
-        ->  Entry<'_, T>
+    unsafe fn entry<Q>(&self, key: &Q, hash: Hash, generation: Generation, capacity: BucketCapacity) -> Entry<'_, T>
     where
         T: Key,
         T::Key: Borrow<Q>,
@@ -817,859 +758,853 @@ fn panic_zero_sized_element() -> ! {
 #[cfg(test)]
 mod tests {
 
-use super::*;
+    use super::*;
 
-use crate::utils::tester::*;
+    use crate::utils::tester::*;
 
-//  A value which may panic on drop.
-#[derive(Debug)]
-pub struct PanickyEq(u32, bool);
+    //  A value which may panic on drop.
+    #[derive(Debug)]
+    pub struct PanickyEq(u32, bool);
 
-impl PanickyEq {
-    //  Creates a normal instance.
-    pub fn new(value: u32) -> Self { Self(value, false) }
-
-    //  Creates a panicky instance.
-    pub fn panicky(value: u32) -> Self { Self(value, true) }
-}
-
-impl Key for PanickyEq {
-    type Key = Self;
-
-    fn key(&self) -> &Self { self }
-}
-
-impl hash::Hash for PanickyEq {
-    fn hash<H: hash::Hasher>(&self, hasher: &mut H) { self.0.hash(hasher) }
-}
-
-impl Eq for PanickyEq {}
-
-impl PartialEq for PanickyEq {
-    fn eq(&self, other: &Self) -> bool {
-        if self.1 || other.1 {
-            panic!("{:?} <> {:?}", self, other);
+    impl PanickyEq {
+        //  Creates a normal instance.
+        pub fn new(value: u32) -> Self {
+            Self(value, false)
         }
-        self.0 == other.0
-    }
-}
 
-#[test]
-fn bucket_allocation_layout() {
-    fn allocation_layout<T>(capacity: usize) -> Result<usize> {
-        match Bucket::<T>::allocation_layout(BucketCapacity(capacity)) {
-            Ok(layout) => {
-                assert_eq!(mem::align_of::<T>(), layout.align());
-                Ok(layout.size())
-            },
-            Err(error) => Err(error),
+        //  Creates a panicky instance.
+        pub fn panicky(value: u32) -> Self {
+            Self(value, true)
         }
     }
 
-    const CAPACITY_BOUNDARY: usize = usize::MAX / 16;
+    impl Key for PanickyEq {
+        type Key = Self;
 
-    assert_eq!(Ok(16), allocation_layout::<u64>(1));
-    assert_eq!(Ok(64), allocation_layout::<u64>(4));
-    assert_eq!(Ok(40), allocation_layout::<[u64; 4]>(1));
-
-    assert_eq!(
-        Ok(CAPACITY_BOUNDARY * 16),
-        allocation_layout::<u64>(CAPACITY_BOUNDARY)
-    );
-    assert_eq!(
-        Err(Failure::BytesOverflow),
-        allocation_layout::<u64>(CAPACITY_BOUNDARY + 1)
-    );
-}
-
-#[test]
-fn bucket_allocate_failure() {
-    let allocator = TestAllocator::default();
-
-    let bucket = Bucket::<SpyElement<'_>>::default();
-    let allocated = unsafe { bucket.allocate(BucketCapacity(1), &allocator) };
-
-    assert_eq!(Err(Failure::OutOfMemory), allocated);
-}
-
-#[test]
-fn bucket_allocate_success() {
-    let allocator = TestAllocator::new(1);
-
-    let bucket = Bucket::<SpyElement<'_>>::default();
-    let allocated = unsafe { bucket.allocate(BucketCapacity(1), &allocator) };
-
-    assert_eq!(Ok(()), allocated);
-
-    let allocation = allocator.allocations().last().copied().unwrap();
-
-    assert_eq!(mem::size_of::<usize>() * 2, allocation.size);
-    assert_eq!(mem::align_of::<usize>(), allocation.alignment);
-}
-
-#[test]
-fn bucket_allocate_skip() {
-    let allocator = TestAllocator::new(1);
-
-    let bucket = Bucket::<SpyElement<'_>>::default();
-    let allocated = unsafe { bucket.allocate(BucketCapacity(1), &allocator) };
-
-    assert_eq!(Ok(()), allocated);
-    assert_eq!(1, allocator.allocations().len());
-
-    let allocated = unsafe { bucket.allocate(BucketCapacity(2), &allocator) };
-
-    assert_eq!(Ok(()), allocated);
-    assert_eq!(1, allocator.allocations().len());
-}
-
-#[test]
-fn bucket_deallocate() {
-    let allocator = TestAllocator::new(1);
-
-    let bucket = Bucket::<SpyElement<'_>>::default();
-    let allocated = unsafe { bucket.allocate(BucketCapacity(1), &allocator) };
-
-    assert_eq!(Ok(()), allocated);
-    assert_eq!(1, allocator.allocations().len());
-
-    unsafe { bucket.deallocate(BucketCapacity(1), &allocator) };
-
-    assert_eq!(0, allocator.allocations().len());
-}
-
-#[test]
-fn bucket_clear() {
-    let capacity = BucketCapacity(4);
-    let initialized = 3;
-    assert!(initialized <= capacity.0);
-
-    let allocator = TestAllocator::new(1);
-
-    let mut bucket = Bucket::<SpyElement<'_>>::default();
-    let allocated = unsafe { bucket.allocate(capacity, &allocator) };
-
-    assert_eq!(Ok(()), allocated);
-
-    let count = SpyCount::zero();
-    let uninitialized = unsafe { bucket.get_slice_mut(capacity) };
-
-    for element in &mut uninitialized[..initialized] {
-        unsafe { element.set(Generation(0), SpyElement::new(&count)) };
+        fn key(&self) -> &Self {
+            self
+        }
     }
 
-    assert_eq!(initialized, count.get());
-
-    unsafe { bucket.clear(capacity) };
-
-    assert_eq!(0, count.get());
-}
-
-#[test]
-#[should_panic]
-fn bucket_array_zero_sized() {
-    BucketArray::<()>::default();
-}
-
-#[test]
-fn bucket_array_get_mut() {
-    let hooks = TestHooks::unlimited();
-
-    let count = SpyCount::zero();
-    let collection = vec![
-        SpyKey::new(1, &count), SpyKey::new(2, &count),
-        SpyKey::new(3, &count), SpyKey::new(4, &count),
-    ];
-
-    let mut buckets = BucketArray::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    let (size, failure) = unsafe {
-        buckets.try_extend(collection, Size(0), capacity, &hooks)
-    };
-
-    assert_eq!(Size(4), size);
-    assert_eq!(None, failure);
-
-    assert!(unsafe { buckets.get_mut(&2, size, capacity, &hooks) }.is_some());
-    assert!(unsafe { buckets.get_mut(&7, size, capacity, &hooks) }.is_none());
-}
-
-#[test]
-fn bucket_array_push_bucket() {
-    let allocator = TestAllocator::unlimited();
-
-    let buckets = BucketArray::<SpyElement<'static>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    unsafe {
-        buckets.push_bucket(NumberBuckets(0), capacity, &allocator).unwrap();
-        buckets.push_bucket(NumberBuckets(1), capacity, &allocator).unwrap();
-        buckets.push_bucket(NumberBuckets(2), capacity, &allocator).unwrap();
+    impl hash::Hash for PanickyEq {
+        fn hash<H: hash::Hasher>(&self, hasher: &mut H) {
+            self.0.hash(hasher)
+        }
     }
 
-    assert_eq!(vec![32, 32, 64], allocator.allocation_sizes());
+    impl Eq for PanickyEq {}
 
-    for index in 0..3 {
-        assert!(buckets.0[index].is_allocated());
+    impl PartialEq for PanickyEq {
+        fn eq(&self, other: &Self) -> bool {
+            if self.1 || other.1 {
+                panic!("{:?} <> {:?}", self, other);
+            }
+            self.0 == other.0
+        }
     }
 
-    for index in 4..MAX_BUCKETS {
-        assert!(!buckets.0[index].is_allocated());
-    }
-}
+    #[test]
+    fn bucket_allocation_layout() {
+        fn allocation_layout<T>(capacity: usize) -> Result<usize> {
+            match Bucket::<T>::allocation_layout(BucketCapacity(capacity)) {
+                Ok(layout) => {
+                    assert_eq!(mem::align_of::<T>(), layout.align());
+                    Ok(layout.size())
+                }
+                Err(error) => Err(error),
+            }
+        }
 
-#[test]
-fn bucket_array_push_bucket_out_of_buckets() {
-    const NUMBER_BUCKETS: usize = 3;
+        const CAPACITY_BOUNDARY: usize = usize::MAX / 16;
 
-    let allocator = TestAllocator::unlimited();
+        assert_eq!(Ok(16), allocation_layout::<u64>(1));
+        assert_eq!(Ok(64), allocation_layout::<u64>(4));
+        assert_eq!(Ok(40), allocation_layout::<[u64; 4]>(1));
 
-    let buckets = BucketArray::<SpyElement<'static>>::default();
-    let capacity = Capacity::new(1, NUMBER_BUCKETS);
-
-    let pushed = unsafe {
-        buckets.push_bucket(NumberBuckets(NUMBER_BUCKETS - 1), capacity, &allocator)
-    };
-    assert_eq!(Ok(NumberBuckets(NUMBER_BUCKETS)), pushed);
-
-    let pushed = unsafe {
-        buckets.push_bucket(NumberBuckets(NUMBER_BUCKETS), capacity, &allocator)
-    };
-    assert_eq!(Err(Failure::OutOfBuckets), pushed);
-}
-
-#[test]
-fn bucket_array_push_bucket_out_of_memory() {
-    let allocator = TestAllocator::default();
-
-    let buckets = BucketArray::<SpyElement<'static>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    let pushed = unsafe {
-        buckets.push_bucket(NumberBuckets(0), capacity, &allocator)
-    };
-    assert_eq!(Err(Failure::OutOfMemory), pushed);
-}
-
-#[test]
-fn bucket_array_try_reserve() {
-    let allocator = TestAllocator::unlimited();
-
-    let buckets = BucketArray::<SpyElement<'static>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    let reserved = unsafe {
-        buckets.try_reserve(Size(17), Size(0), capacity, &allocator)
-    };
-
-    assert_eq!(Ok(()), reserved);
-    assert_eq!(vec![32, 32, 64, 128, 256, 512], allocator.allocation_sizes());
-    assert_eq!(NumberBuckets(6), buckets.number_buckets());
-
-    for index in 0..6 {
-        assert!(buckets.0[index].is_allocated());
+        assert_eq!(Ok(CAPACITY_BOUNDARY * 16), allocation_layout::<u64>(CAPACITY_BOUNDARY));
+        assert_eq!(
+            Err(Failure::BytesOverflow),
+            allocation_layout::<u64>(CAPACITY_BOUNDARY + 1)
+        );
     }
 
-    for index in 6..MAX_BUCKETS {
-        assert!(!buckets.0[index].is_allocated());
-    }
-}
+    #[test]
+    fn bucket_allocate_failure() {
+        let allocator = TestAllocator::default();
 
-#[test]
-#[ignore]   //  Too expensive with MIRI
-fn bucket_array_try_reserve_all() {
-    let allocator = TestAllocator::unlimited();
+        let bucket = Bucket::<SpyElement<'_>>::default();
+        let allocated = unsafe { bucket.allocate(BucketCapacity(1), &allocator) };
 
-    let buckets = BucketArray::<i32>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    let reserved = unsafe {
-        buckets.try_reserve(Size(1024 * 1024), Size(0), capacity, &allocator)
-    };
-
-    assert_eq!(Err(Failure::OutOfBuckets), reserved);
-    assert_eq!(MAX_BUCKETS, allocator.allocations().len());
-    assert_eq!(NumberBuckets(MAX_BUCKETS), buckets.number_buckets());
-
-    for index in 0..MAX_BUCKETS {
-        assert!(buckets.0[index].is_allocated());
-    }
-}
-
-#[test]
-fn bucket_array_try_reserve_elements_overflow() {
-    let allocator = TestAllocator::new(0);
-
-    let buckets = BucketArray::<SpyElement<'static>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    let half_usize = Size(usize::MAX / 2 + 1);
-
-    let reserved = unsafe {
-        buckets.try_reserve(half_usize, half_usize, capacity, &allocator)
-    };
-
-    assert_eq!(Err(Failure::ElementsOverflow), reserved);
-}
-
-#[test]
-fn bucket_array_try_reserve_out_of_buckets() {
-    const NUMBER_BUCKETS: usize = 3;
-
-    let allocator = TestAllocator::unlimited();
-
-    let buckets = BucketArray::<SpyElement<'static>>::default();
-    let capacity = Capacity::new(1, NUMBER_BUCKETS);
-
-    let extra = Size(1usize << NUMBER_BUCKETS);
-
-    let reserved = unsafe {
-        buckets.try_reserve(extra, Size(0), capacity, &allocator)
-    };
-
-    assert_eq!(Err(Failure::OutOfBuckets), reserved);
-    assert_eq!(vec![32, 32, 64], allocator.allocation_sizes());
-    assert_eq!(NumberBuckets(3), buckets.number_buckets());
-
-    for index in 0..NUMBER_BUCKETS {
-        assert!(buckets.0[index].is_allocated());
+        assert_eq!(Err(Failure::OutOfMemory), allocated);
     }
 
-    for index in NUMBER_BUCKETS..MAX_BUCKETS {
-        assert!(!buckets.0[index].is_allocated());
-    }
-}
+    #[test]
+    fn bucket_allocate_success() {
+        let allocator = TestAllocator::new(1);
 
-#[test]
-fn bucket_array_try_reserve_out_of_memory() {
-    const NUMBER_BUCKETS: usize = 3;
+        let bucket = Bucket::<SpyElement<'_>>::default();
+        let allocated = unsafe { bucket.allocate(BucketCapacity(1), &allocator) };
 
-    let allocator = TestAllocator::new(NUMBER_BUCKETS);
+        assert_eq!(Ok(()), allocated);
 
-    let buckets = BucketArray::<SpyElement<'static>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
+        let allocation = allocator.allocations().last().copied().unwrap();
 
-    let extra = Size(1usize << NUMBER_BUCKETS);
-
-    let reserved = unsafe {
-        buckets.try_reserve(extra, Size(0), capacity, &allocator)
-    };
-
-    assert_eq!(Err(Failure::OutOfMemory), reserved);
-    assert_eq!(vec![32, 32, 64], allocator.allocation_sizes());
-    assert_eq!(NumberBuckets(3), buckets.number_buckets());
-
-    for index in 0..NUMBER_BUCKETS {
-        assert!(buckets.0[index].is_allocated());
+        assert_eq!(mem::size_of::<usize>() * 2, allocation.size);
+        assert_eq!(mem::align_of::<usize>(), allocation.alignment);
     }
 
-    for index in NUMBER_BUCKETS..MAX_BUCKETS {
-        assert!(!buckets.0[index].is_allocated());
+    #[test]
+    fn bucket_allocate_skip() {
+        let allocator = TestAllocator::new(1);
+
+        let bucket = Bucket::<SpyElement<'_>>::default();
+        let allocated = unsafe { bucket.allocate(BucketCapacity(1), &allocator) };
+
+        assert_eq!(Ok(()), allocated);
+        assert_eq!(1, allocator.allocations().len());
+
+        let allocated = unsafe { bucket.allocate(BucketCapacity(2), &allocator) };
+
+        assert_eq!(Ok(()), allocated);
+        assert_eq!(1, allocator.allocations().len());
     }
-}
 
-#[test]
-fn bucket_array_try_insert() {
-    let hooks = TestHooks::unlimited();
+    #[test]
+    fn bucket_deallocate() {
+        let allocator = TestAllocator::new(1);
 
-    let count = SpyCount::zero();
+        let bucket = Bucket::<SpyElement<'_>>::default();
+        let allocated = unsafe { bucket.allocate(BucketCapacity(1), &allocator) };
 
-    let buckets = BucketArray::<SpyKey<'_>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
+        assert_eq!(Ok(()), allocated);
+        assert_eq!(1, allocator.allocations().len());
 
-    let try_insert = |counter: usize| -> Result<Size> {
-        let (size, _) = unsafe {
-            let value = SpyKey::new(counter as u64, &count);
-            buckets.try_insert(value, Size(counter), capacity, &hooks)?
+        unsafe { bucket.deallocate(BucketCapacity(1), &allocator) };
+
+        assert_eq!(0, allocator.allocations().len());
+    }
+
+    #[test]
+    fn bucket_clear() {
+        let capacity = BucketCapacity(4);
+        let initialized = 3;
+        assert!(initialized <= capacity.0);
+
+        let allocator = TestAllocator::new(1);
+
+        let mut bucket = Bucket::<SpyElement<'_>>::default();
+        let allocated = unsafe { bucket.allocate(capacity, &allocator) };
+
+        assert_eq!(Ok(()), allocated);
+
+        let count = SpyCount::zero();
+        let uninitialized = unsafe { bucket.get_slice_mut(capacity) };
+
+        for element in &mut uninitialized[..initialized] {
+            unsafe { element.set(Generation(0), SpyElement::new(&count)) };
+        }
+
+        assert_eq!(initialized, count.get());
+
+        unsafe { bucket.clear(capacity) };
+
+        assert_eq!(0, count.get());
+    }
+
+    #[test]
+    #[should_panic]
+    fn bucket_array_zero_sized() {
+        BucketArray::<()>::default();
+    }
+
+    #[test]
+    fn bucket_array_get_mut() {
+        let hooks = TestHooks::unlimited();
+
+        let count = SpyCount::zero();
+        let collection = vec![
+            SpyKey::new(1, &count),
+            SpyKey::new(2, &count),
+            SpyKey::new(3, &count),
+            SpyKey::new(4, &count),
+        ];
+
+        let mut buckets = BucketArray::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        let (size, failure) = unsafe { buckets.try_extend(collection, Size(0), capacity, &hooks) };
+
+        assert_eq!(Size(4), size);
+        assert_eq!(None, failure);
+
+        assert!(unsafe { buckets.get_mut(&2, size, capacity, &hooks) }.is_some());
+        assert!(unsafe { buckets.get_mut(&7, size, capacity, &hooks) }.is_none());
+    }
+
+    #[test]
+    fn bucket_array_push_bucket() {
+        let allocator = TestAllocator::unlimited();
+
+        let buckets = BucketArray::<SpyElement<'static>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        unsafe {
+            buckets.push_bucket(NumberBuckets(0), capacity, &allocator).unwrap();
+            buckets.push_bucket(NumberBuckets(1), capacity, &allocator).unwrap();
+            buckets.push_bucket(NumberBuckets(2), capacity, &allocator).unwrap();
+        }
+
+        assert_eq!(vec![32, 32, 64], allocator.allocation_sizes());
+
+        for index in 0..3 {
+            assert!(buckets.0[index].is_allocated());
+        }
+
+        for index in 4..MAX_BUCKETS {
+            assert!(!buckets.0[index].is_allocated());
+        }
+    }
+
+    #[test]
+    fn bucket_array_push_bucket_out_of_buckets() {
+        const NUMBER_BUCKETS: usize = 3;
+
+        let allocator = TestAllocator::unlimited();
+
+        let buckets = BucketArray::<SpyElement<'static>>::default();
+        let capacity = Capacity::new(1, NUMBER_BUCKETS);
+
+        let pushed = unsafe { buckets.push_bucket(NumberBuckets(NUMBER_BUCKETS - 1), capacity, &allocator) };
+        assert_eq!(Ok(NumberBuckets(NUMBER_BUCKETS)), pushed);
+
+        let pushed = unsafe { buckets.push_bucket(NumberBuckets(NUMBER_BUCKETS), capacity, &allocator) };
+        assert_eq!(Err(Failure::OutOfBuckets), pushed);
+    }
+
+    #[test]
+    fn bucket_array_push_bucket_out_of_memory() {
+        let allocator = TestAllocator::default();
+
+        let buckets = BucketArray::<SpyElement<'static>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        let pushed = unsafe { buckets.push_bucket(NumberBuckets(0), capacity, &allocator) };
+        assert_eq!(Err(Failure::OutOfMemory), pushed);
+    }
+
+    #[test]
+    fn bucket_array_try_reserve() {
+        let allocator = TestAllocator::unlimited();
+
+        let buckets = BucketArray::<SpyElement<'static>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        let reserved = unsafe { buckets.try_reserve(Size(17), Size(0), capacity, &allocator) };
+
+        assert_eq!(Ok(()), reserved);
+        assert_eq!(vec![32, 32, 64, 128, 256, 512], allocator.allocation_sizes());
+        assert_eq!(NumberBuckets(6), buckets.number_buckets());
+
+        for index in 0..6 {
+            assert!(buckets.0[index].is_allocated());
+        }
+
+        for index in 6..MAX_BUCKETS {
+            assert!(!buckets.0[index].is_allocated());
+        }
+    }
+
+    #[test]
+    #[ignore] //  Too expensive with MIRI
+    fn bucket_array_try_reserve_all() {
+        let allocator = TestAllocator::unlimited();
+
+        let buckets = BucketArray::<i32>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        let reserved = unsafe { buckets.try_reserve(Size(1024 * 1024), Size(0), capacity, &allocator) };
+
+        assert_eq!(Err(Failure::OutOfBuckets), reserved);
+        assert_eq!(MAX_BUCKETS, allocator.allocations().len());
+        assert_eq!(NumberBuckets(MAX_BUCKETS), buckets.number_buckets());
+
+        for index in 0..MAX_BUCKETS {
+            assert!(buckets.0[index].is_allocated());
+        }
+    }
+
+    #[test]
+    fn bucket_array_try_reserve_elements_overflow() {
+        let allocator = TestAllocator::new(0);
+
+        let buckets = BucketArray::<SpyElement<'static>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        let half_usize = Size(usize::MAX / 2 + 1);
+
+        let reserved = unsafe { buckets.try_reserve(half_usize, half_usize, capacity, &allocator) };
+
+        assert_eq!(Err(Failure::ElementsOverflow), reserved);
+    }
+
+    #[test]
+    fn bucket_array_try_reserve_out_of_buckets() {
+        const NUMBER_BUCKETS: usize = 3;
+
+        let allocator = TestAllocator::unlimited();
+
+        let buckets = BucketArray::<SpyElement<'static>>::default();
+        let capacity = Capacity::new(1, NUMBER_BUCKETS);
+
+        let extra = Size(1usize << NUMBER_BUCKETS);
+
+        let reserved = unsafe { buckets.try_reserve(extra, Size(0), capacity, &allocator) };
+
+        assert_eq!(Err(Failure::OutOfBuckets), reserved);
+        assert_eq!(vec![32, 32, 64], allocator.allocation_sizes());
+        assert_eq!(NumberBuckets(3), buckets.number_buckets());
+
+        for index in 0..NUMBER_BUCKETS {
+            assert!(buckets.0[index].is_allocated());
+        }
+
+        for index in NUMBER_BUCKETS..MAX_BUCKETS {
+            assert!(!buckets.0[index].is_allocated());
+        }
+    }
+
+    #[test]
+    fn bucket_array_try_reserve_out_of_memory() {
+        const NUMBER_BUCKETS: usize = 3;
+
+        let allocator = TestAllocator::new(NUMBER_BUCKETS);
+
+        let buckets = BucketArray::<SpyElement<'static>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        let extra = Size(1usize << NUMBER_BUCKETS);
+
+        let reserved = unsafe { buckets.try_reserve(extra, Size(0), capacity, &allocator) };
+
+        assert_eq!(Err(Failure::OutOfMemory), reserved);
+        assert_eq!(vec![32, 32, 64], allocator.allocation_sizes());
+        assert_eq!(NumberBuckets(3), buckets.number_buckets());
+
+        for index in 0..NUMBER_BUCKETS {
+            assert!(buckets.0[index].is_allocated());
+        }
+
+        for index in NUMBER_BUCKETS..MAX_BUCKETS {
+            assert!(!buckets.0[index].is_allocated());
+        }
+    }
+
+    #[test]
+    fn bucket_array_try_insert() {
+        let hooks = TestHooks::unlimited();
+
+        let count = SpyCount::zero();
+
+        let buckets = BucketArray::<SpyKey<'_>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        let try_insert = |counter: usize| -> Result<Size> {
+            let (size, _) = unsafe {
+                let value = SpyKey::new(counter as u64, &count);
+                buckets.try_insert(value, Size(counter), capacity, &hooks)?
+            };
+            Ok(size)
         };
-        Ok(size)
-    };
 
-    let inserted = try_insert(0);
+        let inserted = try_insert(0);
 
-    assert_eq!(Ok(Size(1)), inserted);
-    assert_eq!(vec![48], hooks.allocation_sizes());
+        assert_eq!(Ok(Size(1)), inserted);
+        assert_eq!(vec![48], hooks.allocation_sizes());
 
-    let inserted = try_insert(1);
+        let inserted = try_insert(1);
 
-    assert_eq!(Ok(Size(2)), inserted);
-    assert_eq!(vec![48, 48], hooks.allocation_sizes());
+        assert_eq!(Ok(Size(2)), inserted);
+        assert_eq!(vec![48, 48], hooks.allocation_sizes());
 
-    let inserted = try_insert(2);
+        let inserted = try_insert(2);
 
-    assert_eq!(Ok(Size(3)), inserted);
-    assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
+        assert_eq!(Ok(Size(3)), inserted);
+        assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
 
-    let inserted = try_insert(3);
+        let inserted = try_insert(3);
 
-    assert_eq!(Ok(Size(4)), inserted);
-    assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
-}
+        assert_eq!(Ok(Size(4)), inserted);
+        assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
+    }
 
-#[test]
-fn bucket_array_try_insert_out_of_buckets() {
-    const NUMBER_BUCKETS: usize = 2;
+    #[test]
+    fn bucket_array_try_insert_out_of_buckets() {
+        const NUMBER_BUCKETS: usize = 2;
 
-    let hooks = TestHooks::new(NUMBER_BUCKETS);
+        let hooks = TestHooks::new(NUMBER_BUCKETS);
 
-    let count = SpyCount::zero();
+        let count = SpyCount::zero();
 
-    let buckets = BucketArray::<SpyKey<'_>>::default();
-    let capacity = Capacity::new(1, NUMBER_BUCKETS);
+        let buckets = BucketArray::<SpyKey<'_>>::default();
+        let capacity = Capacity::new(1, NUMBER_BUCKETS);
 
-    let try_insert = |counter: usize| -> Result<Size> {
-        let (size, _) = unsafe {
-            let value = SpyKey::new(counter as u64, &count);
-            buckets.try_insert(value, Size(counter), capacity, &hooks)?
+        let try_insert = |counter: usize| -> Result<Size> {
+            let (size, _) = unsafe {
+                let value = SpyKey::new(counter as u64, &count);
+                buckets.try_insert(value, Size(counter), capacity, &hooks)?
+            };
+            Ok(size)
         };
-        Ok(size)
-    };
 
-    let inserted = try_insert(0);
+        let inserted = try_insert(0);
 
-    assert_eq!(Ok(Size(1)), inserted);
-    assert_eq!(vec![48], hooks.allocation_sizes());
+        assert_eq!(Ok(Size(1)), inserted);
+        assert_eq!(vec![48], hooks.allocation_sizes());
 
-    let inserted = try_insert(1);
+        let inserted = try_insert(1);
 
-    assert_eq!(Ok(Size(2)), inserted);
-    assert_eq!(vec![48, 48], hooks.allocation_sizes());
+        assert_eq!(Ok(Size(2)), inserted);
+        assert_eq!(vec![48, 48], hooks.allocation_sizes());
 
-    let inserted = try_insert(2);
+        let inserted = try_insert(2);
 
-    assert_eq!(Err(Failure::OutOfBuckets), inserted);
-    assert_eq!(vec![48, 48], hooks.allocation_sizes());
-}
+        assert_eq!(Err(Failure::OutOfBuckets), inserted);
+        assert_eq!(vec![48, 48], hooks.allocation_sizes());
+    }
 
-#[test]
-fn bucket_array_try_insert_out_of_memory() {
-    const NUMBER_BUCKETS: usize = 2;
+    #[test]
+    fn bucket_array_try_insert_out_of_memory() {
+        const NUMBER_BUCKETS: usize = 2;
 
-    let hooks = TestHooks::new(NUMBER_BUCKETS);
+        let hooks = TestHooks::new(NUMBER_BUCKETS);
 
-    let count = SpyCount::zero();
+        let count = SpyCount::zero();
 
-    let buckets = BucketArray::<SpyKey<'_>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyKey<'_>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
 
-    let try_insert = |counter: usize| -> Result<Size> {
-        let (size, _) = unsafe {
-            let value = SpyKey::new(counter as u64, &count);
-            buckets.try_insert(value, Size(counter), capacity, &hooks)?
+        let try_insert = |counter: usize| -> Result<Size> {
+            let (size, _) = unsafe {
+                let value = SpyKey::new(counter as u64, &count);
+                buckets.try_insert(value, Size(counter), capacity, &hooks)?
+            };
+            Ok(size)
         };
-        Ok(size)
-    };
 
-    let inserted = try_insert(0);
+        let inserted = try_insert(0);
 
-    assert_eq!(Ok(Size(1)), inserted);
-    assert_eq!(vec![48], hooks.allocation_sizes());
+        assert_eq!(Ok(Size(1)), inserted);
+        assert_eq!(vec![48], hooks.allocation_sizes());
 
-    let inserted = try_insert(1);
+        let inserted = try_insert(1);
 
-    assert_eq!(Ok(Size(2)), inserted);
-    assert_eq!(vec![48, 48], hooks.allocation_sizes());
+        assert_eq!(Ok(Size(2)), inserted);
+        assert_eq!(vec![48, 48], hooks.allocation_sizes());
 
-    let inserted = try_insert(2);
+        let inserted = try_insert(2);
 
-    assert_eq!(Err(Failure::OutOfMemory), inserted);
-    assert_eq!(vec![48, 48], hooks.allocation_sizes());
-}
-
-#[test]
-fn bucket_array_try_extend() {
-    let hooks = TestHooks::new(usize::MAX);
-
-    let count = SpyCount::zero();
-    let collection = vec![
-        SpyKey::new(1, &count), SpyKey::new(2, &count),
-        SpyKey::new(3, &count), SpyKey::new(4, &count),
-    ];
-
-    let buckets = BucketArray::<SpyKey<'_>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    let (size, failure) = unsafe {
-        buckets.try_extend(collection, Size(0), capacity, &hooks)
-    };
-
-    assert_eq!(Size(4), size);
-    assert_eq!(None, failure);
-    assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
-}
-
-#[test]
-fn bucket_array_try_extend_out_of_buckets() {
-    const NUMBER_BUCKETS: usize = 3;
-
-    let hooks = TestHooks::new(NUMBER_BUCKETS + 1);
-
-    let count = SpyCount::zero();
-    let collection = vec![
-        SpyKey::new(1, &count), SpyKey::new(2, &count),
-        SpyKey::new(3, &count), SpyKey::new(4, &count),
-        SpyKey::new(5, &count), SpyKey::new(6, &count),
-    ];
-
-    let buckets = BucketArray::<SpyKey<'_>>::default();
-    let capacity = Capacity::new(1, NUMBER_BUCKETS);
-
-    let (size, failure) = unsafe {
-        buckets.try_extend(collection, Size(0), capacity, &hooks)
-    };
-
-    assert_eq!(Size(4), size);
-    assert_eq!(Some(Failure::OutOfBuckets), failure);
-    assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
-}
-
-#[test]
-fn bucket_array_try_extend_out_of_memory() {
-    const NUMBER_BUCKETS: usize = 3;
-
-    let hooks = TestHooks::new(NUMBER_BUCKETS);
-
-    let count = SpyCount::zero();
-    let collection = vec![
-        SpyKey::new(1, &count), SpyKey::new(2, &count),
-        SpyKey::new(3, &count), SpyKey::new(4, &count),
-        SpyKey::new(5, &count), SpyKey::new(6, &count),
-    ];
-
-    let buckets = BucketArray::<SpyKey<'_>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    let (size, failure) = unsafe {
-        buckets.try_extend(collection, Size(0), capacity, &hooks)
-    };
-
-    assert_eq!(Size(4), size);
-    assert_eq!(Some(Failure::OutOfMemory), failure);
-    assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
-}
-
-#[test]
-fn bucket_array_shrink_none() {
-    let hooks = TestHooks::unlimited();
-
-    let count = SpyCount::zero();
-    let collection = vec![
-        SpyKey::new(1, &count), SpyKey::new(2, &count),
-        SpyKey::new(3, &count), SpyKey::new(4, &count),
-    ];
-
-    let buckets = BucketArray::<SpyKey<'_>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    unsafe {
-        buckets.try_extend(collection, Size(0), capacity, &hooks);
+        assert_eq!(Err(Failure::OutOfMemory), inserted);
+        assert_eq!(vec![48, 48], hooks.allocation_sizes());
     }
 
-    assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
+    #[test]
+    fn bucket_array_try_extend() {
+        let hooks = TestHooks::new(usize::MAX);
 
-    unsafe {
-        buckets.shrink(Size(4), capacity, &hooks);
+        let count = SpyCount::zero();
+        let collection = vec![
+            SpyKey::new(1, &count),
+            SpyKey::new(2, &count),
+            SpyKey::new(3, &count),
+            SpyKey::new(4, &count),
+        ];
+
+        let buckets = BucketArray::<SpyKey<'_>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        let (size, failure) = unsafe { buckets.try_extend(collection, Size(0), capacity, &hooks) };
+
+        assert_eq!(Size(4), size);
+        assert_eq!(None, failure);
+        assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
     }
 
-    assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
-}
+    #[test]
+    fn bucket_array_try_extend_out_of_buckets() {
+        const NUMBER_BUCKETS: usize = 3;
 
-#[test]
-fn bucket_array_shrink_partial() {
-    let hooks = TestHooks::unlimited();
+        let hooks = TestHooks::new(NUMBER_BUCKETS + 1);
 
-    let count = SpyCount::zero();
-    let collection = vec![
-        SpyKey::new(1, &count), SpyKey::new(2, &count),
-        SpyKey::new(3, &count), SpyKey::new(4, &count),
-    ];
+        let count = SpyCount::zero();
+        let collection = vec![
+            SpyKey::new(1, &count),
+            SpyKey::new(2, &count),
+            SpyKey::new(3, &count),
+            SpyKey::new(4, &count),
+            SpyKey::new(5, &count),
+            SpyKey::new(6, &count),
+        ];
 
-    let buckets = BucketArray::<SpyKey<'_>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyKey<'_>>::default();
+        let capacity = Capacity::new(1, NUMBER_BUCKETS);
 
-    unsafe {
-        let _ = buckets.try_reserve(Size(16), Size(0), capacity, &hooks);
+        let (size, failure) = unsafe { buckets.try_extend(collection, Size(0), capacity, &hooks) };
+
+        assert_eq!(Size(4), size);
+        assert_eq!(Some(Failure::OutOfBuckets), failure);
+        assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
     }
 
-    assert_eq!(vec![48, 48, 96, 192, 384], hooks.allocation_sizes());
+    #[test]
+    fn bucket_array_try_extend_out_of_memory() {
+        const NUMBER_BUCKETS: usize = 3;
 
-    unsafe {
-        buckets.try_extend(collection, Size(0), capacity, &hooks);
+        let hooks = TestHooks::new(NUMBER_BUCKETS);
+
+        let count = SpyCount::zero();
+        let collection = vec![
+            SpyKey::new(1, &count),
+            SpyKey::new(2, &count),
+            SpyKey::new(3, &count),
+            SpyKey::new(4, &count),
+            SpyKey::new(5, &count),
+            SpyKey::new(6, &count),
+        ];
+
+        let buckets = BucketArray::<SpyKey<'_>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        let (size, failure) = unsafe { buckets.try_extend(collection, Size(0), capacity, &hooks) };
+
+        assert_eq!(Size(4), size);
+        assert_eq!(Some(Failure::OutOfMemory), failure);
+        assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
     }
 
-    unsafe {
-        buckets.shrink(Size(4), capacity, &hooks);
+    #[test]
+    fn bucket_array_shrink_none() {
+        let hooks = TestHooks::unlimited();
+
+        let count = SpyCount::zero();
+        let collection = vec![
+            SpyKey::new(1, &count),
+            SpyKey::new(2, &count),
+            SpyKey::new(3, &count),
+            SpyKey::new(4, &count),
+        ];
+
+        let buckets = BucketArray::<SpyKey<'_>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        unsafe {
+            buckets.try_extend(collection, Size(0), capacity, &hooks);
+        }
+
+        assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
+
+        unsafe {
+            buckets.shrink(Size(4), capacity, &hooks);
+        }
+
+        assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
     }
 
-    assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
-}
+    #[test]
+    fn bucket_array_shrink_partial() {
+        let hooks = TestHooks::unlimited();
 
-#[test]
-fn bucket_array_shrink_all() {
-    let allocator = TestAllocator::unlimited();
+        let count = SpyCount::zero();
+        let collection = vec![
+            SpyKey::new(1, &count),
+            SpyKey::new(2, &count),
+            SpyKey::new(3, &count),
+            SpyKey::new(4, &count),
+        ];
 
-    let buckets = BucketArray::<SpyKey<'_>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyKey<'_>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
 
-    unsafe {
-        let _ = buckets.try_reserve(Size(16), Size(0), capacity, &allocator);
+        unsafe {
+            let _ = buckets.try_reserve(Size(16), Size(0), capacity, &hooks);
+        }
+
+        assert_eq!(vec![48, 48, 96, 192, 384], hooks.allocation_sizes());
+
+        unsafe {
+            buckets.try_extend(collection, Size(0), capacity, &hooks);
+        }
+
+        unsafe {
+            buckets.shrink(Size(4), capacity, &hooks);
+        }
+
+        assert_eq!(vec![48, 48, 96], hooks.allocation_sizes());
     }
 
-    assert_eq!(vec![48, 48, 96, 192, 384], allocator.allocation_sizes());
+    #[test]
+    fn bucket_array_shrink_all() {
+        let allocator = TestAllocator::unlimited();
 
-    unsafe {
-        buckets.shrink(Size(0), capacity, &allocator);
+        let buckets = BucketArray::<SpyKey<'_>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        unsafe {
+            let _ = buckets.try_reserve(Size(16), Size(0), capacity, &allocator);
+        }
+
+        assert_eq!(vec![48, 48, 96, 192, 384], allocator.allocation_sizes());
+
+        unsafe {
+            buckets.shrink(Size(0), capacity, &allocator);
+        }
+
+        assert_eq!(0, allocator.allocations().len());
     }
 
-    assert_eq!(0, allocator.allocations().len());
-}
+    #[test]
+    fn bucket_array_clear_empty() {
+        let allocator = TestAllocator::unlimited();
 
-#[test]
-fn bucket_array_clear_empty() {
-    let allocator = TestAllocator::unlimited();
+        let buckets = BucketArray::<SpyKey<'_>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
 
-    let buckets = BucketArray::<SpyKey<'_>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
+        unsafe {
+            let _ = buckets.try_reserve(Size(16), Size(0), capacity, &allocator);
+        }
 
-    unsafe {
-        let _ = buckets.try_reserve(Size(16), Size(0), capacity, &allocator);
+        let mut buckets = buckets;
+        unsafe {
+            buckets.clear(Size(0), capacity);
+        }
     }
 
-    let mut buckets = buckets;
-    unsafe {
-        buckets.clear(Size(0), capacity);
+    #[test]
+    fn bucket_array_clear_all() {
+        let hooks = TestHooks::unlimited();
+
+        let count = SpyCount::zero();
+        let collection = vec![
+            SpyKey::new(1, &count),
+            SpyKey::new(2, &count),
+            SpyKey::new(3, &count),
+            SpyKey::new(4, &count),
+        ];
+
+        let buckets = BucketArray::<SpyKey<'_>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        unsafe {
+            buckets.try_extend(collection, Size(0), capacity, &hooks);
+        }
+
+        let mut buckets = buckets;
+        unsafe {
+            buckets.clear(Size(4), capacity);
+        }
+
+        assert_eq!(0, count.get());
     }
 
-}
+    #[test]
+    fn bucket_array_panic_allocate() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
 
-#[test]
-fn bucket_array_clear_all() {
-    let hooks = TestHooks::unlimited();
+        const NB_ALLOCATIONS: usize = 2;
 
-    let count = SpyCount::zero();
-    let collection = vec![
-        SpyKey::new(1, &count), SpyKey::new(2, &count),
-        SpyKey::new(3, &count), SpyKey::new(4, &count),
-    ];
+        let allocator = PanickyAllocator::default();
+        allocator.allowed.set(NB_ALLOCATIONS);
 
-    let buckets = BucketArray::<SpyKey<'_>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyKey<'static>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
 
-    unsafe {
-        buckets.try_extend(collection, Size(0), capacity, &hooks);
+        let panicked = catch_unwind(AssertUnwindSafe(|| unsafe {
+            let _ = buckets.try_reserve(Size(4), Size(0), capacity, &allocator);
+        }));
+        assert!(panicked.is_err());
+
+        assert!(buckets.0[0].is_allocated());
+        assert!(buckets.0[1].is_allocated());
+        assert!(!buckets.0[NB_ALLOCATIONS].is_allocated());
     }
 
-    let mut buckets = buckets;
-    unsafe {
-        buckets.clear(Size(4), capacity);
-    }
+    #[test]
+    fn bucket_array_panic_deallocate() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
 
-    assert_eq!(0, count.get());
-}
+        const FAILED_DEALLOCATION: usize = 1;
 
-#[test]
-fn bucket_array_panic_allocate() {
-    use std::panic::{AssertUnwindSafe, catch_unwind};
+        let allocator = TestAllocator::unlimited();
 
-    const NB_ALLOCATIONS: usize = 2;
+        let buckets = BucketArray::<SpyKey<'static>>::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
 
-    let allocator = PanickyAllocator::default();
-    allocator.allowed.set(NB_ALLOCATIONS);
-
-    let buckets = BucketArray::<SpyKey<'static>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    let panicked = catch_unwind(AssertUnwindSafe(|| {
         unsafe {
             let _ = buckets.try_reserve(Size(4), Size(0), capacity, &allocator);
         }
-    }));
-    assert!(panicked.is_err());
+        assert_eq!(3, allocator.allocations.borrow().len());
 
-    assert!(buckets.0[0].is_allocated());
-    assert!(buckets.0[1].is_allocated());
-    assert!(!buckets.0[NB_ALLOCATIONS].is_allocated());
-}
+        allocator.allocations.borrow_mut().remove(FAILED_DEALLOCATION);
 
-#[test]
-fn bucket_array_panic_deallocate() {
-    use std::panic::{AssertUnwindSafe, catch_unwind};
+        let panicked = catch_unwind(AssertUnwindSafe(|| {
+            unsafe { buckets.shrink(Size(0), capacity, &allocator) };
+        }));
+        assert!(panicked.is_err());
 
-    const FAILED_DEALLOCATION: usize = 1;
-
-    let allocator = TestAllocator::unlimited();
-
-    let buckets = BucketArray::<SpyKey<'static>>::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    unsafe {
-        let _ = buckets.try_reserve(Size(4), Size(0), capacity, &allocator);
+        assert!(!buckets.0[0].is_allocated());
+        assert!(!buckets.0[FAILED_DEALLOCATION].is_allocated());
+        assert!(buckets.0[2].is_allocated());
     }
-    assert_eq!(3, allocator.allocations.borrow().len());
 
-    allocator.allocations.borrow_mut().remove(FAILED_DEALLOCATION);
+    #[test]
+    fn bucket_array_panic_next() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
 
-    let panicked = catch_unwind(AssertUnwindSafe(|| {
-        unsafe { buckets.shrink(Size(0), capacity, &allocator) };
-    }));
-    assert!(panicked.is_err());
+        let hooks = TestHooks::unlimited();
 
-    assert!(!buckets.0[0].is_allocated());
-    assert!(!buckets.0[FAILED_DEALLOCATION].is_allocated());
-    assert!(buckets.0[2].is_allocated());
-}
+        let buckets = BucketArray::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
 
-#[test]
-fn bucket_array_panic_next() {
-    use std::panic::{AssertUnwindSafe, catch_unwind};
-
-    let hooks = TestHooks::unlimited();
-
-    let buckets = BucketArray::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    let panicked = catch_unwind(AssertUnwindSafe(|| {
-        unsafe {
+        let panicked = catch_unwind(AssertUnwindSafe(|| unsafe {
             let collection = PanickyIterator::new(3);
             buckets.try_extend(collection, Size(0), capacity, &hooks);
-        }
-    }));
-    assert!(panicked.is_err());
+        }));
+        assert!(panicked.is_err());
 
-    assert!(buckets.0[0].is_allocated());
-    assert!(buckets.0[1].is_allocated());
-    assert!(buckets.0[2].is_allocated());
-    assert!(!buckets.0[3].is_allocated());
-}
-
-#[test]
-fn bucket_array_panic_hash_get() {
-    use std::panic::{AssertUnwindSafe, catch_unwind};
-
-    let hooks = TestHooks::unlimited();
-
-    let buckets = BucketArray::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    unsafe {
-        buckets.try_extend(0..4, Size(0), capacity, &hooks);
+        assert!(buckets.0[0].is_allocated());
+        assert!(buckets.0[1].is_allocated());
+        assert!(buckets.0[2].is_allocated());
+        assert!(!buckets.0[3].is_allocated());
     }
 
-    hooks.set_panic_hash(0);
+    #[test]
+    fn bucket_array_panic_hash_get() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
 
-    let panicked = catch_unwind(AssertUnwindSafe(|| {
-        unsafe { buckets.get(&1, Size(4), capacity, &hooks) };
-    }));
-    assert!(panicked.is_err());
-}
+        let hooks = TestHooks::unlimited();
 
-#[test]
-fn bucket_array_panic_hash_insert() {
-    use std::panic::{AssertUnwindSafe, catch_unwind};
+        let buckets = BucketArray::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
 
-    let hooks = TestHooks::unlimited();
-    hooks.set_panic_hash(3);
-
-    let buckets = BucketArray::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    let panicked = catch_unwind(AssertUnwindSafe(|| {
         unsafe {
             buckets.try_extend(0..4, Size(0), capacity, &hooks);
         }
-    }));
-    assert!(panicked.is_err());
 
-    assert!(buckets.0[0].is_allocated());
-    assert!(buckets.0[1].is_allocated());
-    assert!(buckets.0[2].is_allocated());
-    assert!(!buckets.0[3].is_allocated());
-}
+        hooks.set_panic_hash(0);
 
-#[test]
-fn bucket_array_panic_eq_get() {
-    use std::panic::{AssertUnwindSafe, catch_unwind};
-
-    let hooks = TestHooks::unlimited();
-
-    let collection = vec![
-        PanickyEq::new(0),
-        PanickyEq::new(1),
-        PanickyEq::new(2),
-        PanickyEq::new(3),
-    ];
-
-    let buckets = BucketArray::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
-
-    unsafe {
-        buckets.try_extend(collection, Size(0), capacity, &hooks);
+        let panicked = catch_unwind(AssertUnwindSafe(|| {
+            unsafe { buckets.get(&1, Size(4), capacity, &hooks) };
+        }));
+        assert!(panicked.is_err());
     }
 
-    let panicked = catch_unwind(AssertUnwindSafe(|| {
-        unsafe { buckets.get(&PanickyEq::panicky(3), Size(4), capacity, &hooks) };
-    }));
-    assert!(panicked.is_err());
-}
+    #[test]
+    fn bucket_array_panic_hash_insert() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
 
-#[test]
-fn bucket_array_panic_eq_insert() {
-    use std::panic::{AssertUnwindSafe, catch_unwind};
+        let hooks = TestHooks::unlimited();
+        hooks.set_panic_hash(3);
 
-    let hooks = TestHooks::unlimited();
+        let buckets = BucketArray::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
 
-    let collection = vec![
-        PanickyEq::new(0),
-        PanickyEq::new(1),
-        PanickyEq::panicky(2),
-        PanickyEq::new(3),
-    ];
+        let panicked = catch_unwind(AssertUnwindSafe(|| unsafe {
+            buckets.try_extend(0..4, Size(0), capacity, &hooks);
+        }));
+        assert!(panicked.is_err());
 
-    let buckets = BucketArray::default();
-    let capacity = Capacity::new(1, MAX_BUCKETS);
+        assert!(buckets.0[0].is_allocated());
+        assert!(buckets.0[1].is_allocated());
+        assert!(buckets.0[2].is_allocated());
+        assert!(!buckets.0[3].is_allocated());
+    }
 
-    let panicked = catch_unwind(AssertUnwindSafe(|| {
+    #[test]
+    fn bucket_array_panic_eq_get() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+
+        let hooks = TestHooks::unlimited();
+
+        let collection = vec![
+            PanickyEq::new(0),
+            PanickyEq::new(1),
+            PanickyEq::new(2),
+            PanickyEq::new(3),
+        ];
+
+        let buckets = BucketArray::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
         unsafe {
             buckets.try_extend(collection, Size(0), capacity, &hooks);
         }
-    }));
-    assert!(panicked.is_err());
 
-    assert!(buckets.0[0].is_allocated());
-    assert!(buckets.0[1].is_allocated());
-    assert!(!buckets.0[2].is_allocated());
-}
-
-#[test]
-fn bucket_iterator() {
-    let array: [Element<i32>; 10] = Default::default();
-
-    for &i in [1, 3, 5, 7, 9].iter() {
-        unsafe { array[10 - i as usize].set(Generation(i as usize), i) };
+        let panicked = catch_unwind(AssertUnwindSafe(|| {
+            unsafe { buckets.get(&PanickyEq::panicky(3), Size(4), capacity, &hooks) };
+        }));
+        assert!(panicked.is_err());
     }
 
-    {
-        let vec: Vec<_> =
-            unsafe { BucketIterator::new(&array, Generation(4)) }.collect();
+    #[test]
+    fn bucket_array_panic_eq_insert() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
 
-        assert_eq!(
-            vec![None, None, None, None, None,
-                 None, None, Some(&3), None, Some(&1)],
-            vec
-        );
+        let hooks = TestHooks::unlimited();
+
+        let collection = vec![
+            PanickyEq::new(0),
+            PanickyEq::new(1),
+            PanickyEq::panicky(2),
+            PanickyEq::new(3),
+        ];
+
+        let buckets = BucketArray::default();
+        let capacity = Capacity::new(1, MAX_BUCKETS);
+
+        let panicked = catch_unwind(AssertUnwindSafe(|| unsafe {
+            buckets.try_extend(collection, Size(0), capacity, &hooks);
+        }));
+        assert!(panicked.is_err());
+
+        assert!(buckets.0[0].is_allocated());
+        assert!(buckets.0[1].is_allocated());
+        assert!(!buckets.0[2].is_allocated());
     }
 
-    {
-        let vec: Vec<_> =
-            unsafe { BucketIterator::new(&array, Generation(9)) }.collect();
+    #[test]
+    fn bucket_iterator() {
+        let array: [Element<i32>; 10] = Default::default();
 
-        assert_eq!(
-            vec![None, None, None, Some(&7), None,
-                 Some(&5), None, Some(&3), None, Some(&1)],
-            vec
-        );
+        for &i in [1, 3, 5, 7, 9].iter() {
+            unsafe { array[10 - i as usize].set(Generation(i as usize), i) };
+        }
+
+        {
+            let vec: Vec<_> = unsafe { BucketIterator::new(&array, Generation(4)) }.collect();
+
+            assert_eq!(
+                vec![None, None, None, None, None, None, None, Some(&3), None, Some(&1)],
+                vec
+            );
+        }
+
+        {
+            let vec: Vec<_> = unsafe { BucketIterator::new(&array, Generation(9)) }.collect();
+
+            assert_eq!(
+                vec![
+                    None,
+                    None,
+                    None,
+                    Some(&7),
+                    None,
+                    Some(&5),
+                    None,
+                    Some(&3),
+                    None,
+                    Some(&1)
+                ],
+                vec
+            );
+        }
     }
-}
-
 }

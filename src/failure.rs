@@ -1,15 +1,12 @@
 //! The Failure and Result types of this library.
 //!
-//! The collections in this library support faillible allocations. Any method
-//! which attempts to allocate memory, or add an element, may fail. The cause of
-//! the error is then represented as a `Failure`.
+//! The collections in this library support faillible allocations. Any method which attempts to allocate memory, or add
+//! an element, may fail. The cause of the error is then represented as a `Failure`.
 //!
 //! All faillible methods come in two versions:
 //!
-//! -   A faillible `try_xxx` version, which returns a `Result` with `Failure`
-//!     as the error type.
-//! -   A convenience `xxx` version, which invokes the `try_xxx` version and
-//!     panics in case of error.
+//! -   A faillible `try_xxx` version, which returns a `Result` with `Failure` as the error type.
+//! -   A convenience `xxx` version, which invokes the `try_xxx` version and panics in case of error.
 
 use super::root::{error, fmt, result};
 
@@ -40,11 +37,10 @@ pub type Result<T> = result::Result<T, Failure>;
 #[cfg(test)]
 mod tests {
 
-use super::*;
+    use super::*;
 
-#[test]
-fn failure_display() {
-    assert_eq!("BytesOverflow", format!("{}", Failure::BytesOverflow));
-}
-
+    #[test]
+    fn failure_display() {
+        assert_eq!("BytesOverflow", format!("{}", Failure::BytesOverflow));
+    }
 }

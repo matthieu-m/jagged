@@ -15,7 +15,9 @@ impl<'a, K, V> KeyIterator<'a, K, V> {
 }
 
 impl<'a, K, V> Clone for KeyIterator<'a, K, V> {
-    fn clone(&self) -> Self { Self(self.0.clone()) }
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
 }
 
 impl<'a, K, V> iter::Iterator for KeyIterator<'a, K, V> {
@@ -36,7 +38,9 @@ impl<'a, K, V> ValueIterator<'a, K, V> {
 }
 
 impl<'a, K, V> Clone for ValueIterator<'a, K, V> {
-    fn clone(&self) -> Self { Self(self.0.clone()) }
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
 }
 
 impl<'a, K, V> iter::Iterator for ValueIterator<'a, K, V> {
@@ -57,7 +61,9 @@ impl<'a, K, V> KeyValueIterator<'a, K, V> {
 }
 
 impl<'a, K, V> Clone for KeyValueIterator<'a, K, V> {
-    fn clone(&self) -> Self { Self(self.0.clone()) }
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
 }
 
 impl<'a, K, V> iter::Iterator for KeyValueIterator<'a, K, V> {

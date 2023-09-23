@@ -7,11 +7,9 @@ use super::{HashSetReader, HashSetSnapshot};
 use super::atomic::AcqRelUsize;
 use super::entry::Entry;
 use super::failure::{Failure, Result};
+use super::hashcore::buckets_api::{BucketArray, BucketsExclusiveWriter, BucketsSharedReader, BucketsSharedWriter};
+use super::hashcore::capacity::{BucketIndex, Capacity, Size};
 use super::hashcore::HashHooks;
-use super::hashcore::buckets_api::{
-    BucketArray, BucketsExclusiveWriter, BucketsSharedReader, BucketsSharedWriter
-};
-use super::hashcore::capacity::{Capacity, BucketIndex, Size};
 
 #[cfg(feature = "with-std")]
 use super::hashcore::DefaultHashHooks;
@@ -22,8 +20,7 @@ use super::hashcore::DefaultHashHooks;
 
 /// `HashSet`
 ///
-/// Limitation: the maximum number of buckets cannot be specified, due to the
-///             lack of const generics.
+/// Limitation: the maximum number of buckets cannot be specified, due to the lack of const generics.
 #[cfg(not(feature = "with-std"))]
 pub struct HashSet<T, H: HashHooks> {
     hooks: H,
@@ -34,8 +31,7 @@ pub struct HashSet<T, H: HashHooks> {
 
 /// `HashSet`
 ///
-/// Limitation: the maximum number of buckets cannot be specified, due to the
-///             lack of const generics.
+/// Limitation: the maximum number of buckets cannot be specified, due to the lack of const generics.
 #[cfg(feature = "with-std")]
 pub struct HashSet<T, H: HashHooks = DefaultHashHooks> {
     //  Hooks of the HashSet.
@@ -54,8 +50,7 @@ pub struct HashSet<T, H: HashHooks = DefaultHashHooks> {
 }
 
 impl<T, H: HashHooks + Default> HashSet<T, H> {
-    /// Creates a new instance of the `HashSet` with a maximum capacity of 2 for
-    /// the first bucket.
+    /// Creates a new instance of the `HashSet` with a maximum capacity of 2 for the first bucket.
     ///
     /// No memory is allocated.
     ///
@@ -69,13 +64,13 @@ impl<T, H: HashHooks + Default> HashSet<T, H> {
     /// assert_eq!(0, set.capacity());
     /// assert_eq!(512 * 1024, set.max_capacity());
     /// ```
-    pub fn new() -> Self { Self::with_hooks(H::default()) }
+    pub fn new() -> Self {
+        Self::with_hooks(H::default())
+    }
 
-    /// Creates a new instace of the `HashSet` with a capacity of at least
-    /// `capacity_of_0` for the first bucket.
+    /// Creates a new instace of the `HashSet` with a capacity of at least `capacity_of_0` for the first bucket.
     ///
-    /// If `capacity_of_0` is not a power of 2, it is rounded up.
-    /// If `capacity_of_0` is 1, it is rounded up to 2.
+    /// If `capacity_of_0` is not a power of 2, it is rounded up. If `capacity_of_0` is 1, it is rounded up to 2.
     ///
     /// No memory is allocated.
     ///
@@ -99,8 +94,7 @@ impl<T, H: HashHooks + Default> HashSet<T, H> {
 }
 
 impl<T, H: HashHooks> HashSet<T, H> {
-    /// Creates a new instance of the `HashSet` with a capacity of 2 for
-    /// the first bucket.
+    /// Creates a new instance of the `HashSet` with a capacity of 2 for the first bucket.
     ///
     /// No memory is allocated.
     ///
@@ -118,11 +112,9 @@ impl<T, H: HashHooks> HashSet<T, H> {
         Self::with_max_capacity_and_hooks(2, hooks)
     }
 
-    /// Creates a new instace of the `HashSet` with a capacity of at least
-    /// `capacity_of_0` for the first bucket.
+    /// Creates a new instace of the `HashSet` with a capacity of at least `capacity_of_0` for the first bucket.
     ///
-    /// If `capacity_of_0` is not a power of 2, it is rounded up.
-    /// If `capacity_of_0` is 1, it is rounded up to 2.
+    /// If `capacity_of_0` is not a power of 2, it is rounded up. If `capacity_of_0` is 1, it is rounded up to 2.
     ///
     /// No memory is allocated.
     ///
@@ -141,9 +133,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
     /// assert_eq!(0, set.capacity());
     /// assert_eq!(1024 * 1024, set.max_capacity());
     /// ```
-    pub fn with_max_capacity_and_hooks(capacity_of_0: usize, hooks: H)
-        -> Self
-    {
+    pub fn with_max_capacity_and_hooks(capacity_of_0: usize, hooks: H) -> Self {
         Self {
             hooks,
             capacity: BucketArray::<Entry<T>>::capacity(capacity_of_0),
@@ -156,14 +146,11 @@ impl<T, H: HashHooks> HashSet<T, H> {
 impl<T, H: HashHooks> HashSet<T, H> {
     /// Creates a `HashSetReader`.
     ///
-    /// A `HashSetReader` is a read-only view of the `HashSet` instance it is
-    /// created from which it reflects updates.
+    /// A `HashSetReader` is a read-only view of the `HashSet` instance it is created from which it reflects updates.
     ///
-    /// Reflecting updates comes at the small synchronization cost of having to
-    /// read one atomic variable for each access.
+    /// Reflecting updates comes at the small synchronization cost of having to read one atomic variable for each access.
     ///
-    /// If synchronization is unnecessary, consider using a `HashSetSnapshot`
-    /// instead.
+    /// If synchronization is unnecessary, consider using a `HashSetSnapshot` instead.
     ///
     /// #   Example
     ///
@@ -181,9 +168,8 @@ impl<T, H: HashHooks> HashSet<T, H> {
 
     /// Creates a `HashSetSnapshot`.
     ///
-    /// A `HashSetSnapshot` is a read-only view of the `HashSet` instance it is
-    /// created from which it does not reflect updates. Once created, it is
-    /// immutable.
+    /// A `HashSetSnapshot` is a read-only view of the `HashSet` instance it is created from which it does not reflect
+    /// updates. Once created, it is immutable.
     ///
     /// A `HashSetSnapshot` can also be created from a `HashSetReader`.
     ///
@@ -213,7 +199,9 @@ impl<T, H: HashHooks> HashSet<T, H> {
     /// set.insert(1);
     /// assert!(!set.is_empty());
     /// ```
-    pub fn is_empty(&self) -> bool { self.shared_reader().is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.shared_reader().is_empty()
+    }
 
     /// Returns the number of elements contained in the instance.
     ///
@@ -227,7 +215,9 @@ impl<T, H: HashHooks> HashSet<T, H> {
     /// set.insert(1);
     /// assert_eq!(1, set.len());
     /// ```
-    pub fn len(&self) -> usize { self.shared_reader().len() }
+    pub fn len(&self) -> usize {
+        self.shared_reader().len()
+    }
 
     /// Returns the current capacity of the instance.
     ///
@@ -254,9 +244,8 @@ impl<T, H: HashHooks> HashSet<T, H> {
     /// The maximum capacity depends:
     ///
     /// -   On the capacity of the first bucket, 1 by default.
-    /// -   On the maximum number of buckets, at most 20 in the absence of const
-    ///     generics, but possibly less if the capacity of the first bucket is
-    ///     really large.
+    /// -   On the maximum number of buckets, at most 20 in the absence of const generics, but possibly less if the
+    ///     capacity of the first bucket is really large.
     ///
     /// #   Example
     ///
@@ -265,7 +254,9 @@ impl<T, H: HashHooks> HashSet<T, H> {
     /// let set: HashSet<i32> = HashSet::new();
     /// assert_eq!(512 * 1024, set.max_capacity());
     /// ```
-    pub fn max_capacity(&self) -> usize { self.shared_reader().max_capacity() }
+    pub fn max_capacity(&self) -> usize {
+        self.shared_reader().max_capacity()
+    }
 
     /// Returns the number of buckets currently used.
     ///
@@ -287,10 +278,8 @@ impl<T, H: HashHooks> HashSet<T, H> {
     ///
     /// In general, this method should return 20.
     ///
-    /// If the capacity of the first bucket is large enough that having 20
-    /// buckets would result in `max_capacity` overflowing `usize`, then the
-    /// maximum number of buckets will be just as low as necessary to avoid this
-    /// fate.
+    /// If the capacity of the first bucket is large enough that having 20 buckets would result in `max_capacity`
+    /// overflowing `usize`, then the maximum number of buckets will be just as low as necessary to avoid this fate.
     ///
     /// #   Example
     ///
@@ -302,7 +291,9 @@ impl<T, H: HashHooks> HashSet<T, H> {
     /// let set: HashSet<i32> = HashSet::with_max_capacity(usize::MAX / 8);
     /// assert_eq!(3, set.max_buckets());
     /// ```
-    pub fn max_buckets(&self) -> usize { self.shared_reader().max_buckets() }
+    pub fn max_buckets(&self) -> usize {
+        self.shared_reader().max_buckets()
+    }
 
     /// Returns `true` if the set contains the value.
     ///
@@ -346,8 +337,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
 
     /// Clears the instance.
     ///
-    /// The instance is then empty, although it retains previously allocated
-    /// memory.
+    /// The instance is then empty, although it retains previously allocated memory.
     ///
     /// Use `shrink` to release excess memory.
     ///
@@ -371,17 +361,14 @@ impl<T, H: HashHooks> HashSet<T, H> {
         //  Safety:
         //  -   `size` exactly matches the size of the vector.
         //  -   `size` does not increase between creation and use.
-        let exclusive = unsafe {
-            BucketsExclusiveWriter::new(&mut self.buckets, size, self.capacity)
-        };
+        let exclusive = unsafe { BucketsExclusiveWriter::new(&mut self.buckets, size, self.capacity) };
 
         exclusive.clear();
     }
 
     /// Shrinks the instance.
     ///
-    /// This method releases excess capacity, retaining just enough to
-    /// accomodate the current elements.
+    /// This method releases excess capacity, retaining just enough to accomodate the current elements.
     ///
     /// #   Example
     ///
@@ -404,21 +391,19 @@ impl<T, H: HashHooks> HashSet<T, H> {
 
     /// Reserves buckets for up to `extra` elements.
     ///
-    /// Calling this method reserves enough capacity to be able to insert `extra`
-    /// more elements into the instance without allocation failure.
+    /// Calling this method reserves enough capacity to be able to insert `extra` more elements into the instance
+    /// without allocation failure.
     ///
-    /// Calling this method has no effect if there is already sufficient
-    /// capacity for `extra` elements.
+    /// Calling this method has no effect if there is already sufficient capacity for `extra` elements.
     ///
     /// More capacity than strictly necessary may be allocated.
     ///
     /// #   Errors
     ///
-    /// Returns an error if sufficient space cannot be reserved to accomodate
-    /// `extra` elements.
+    /// Returns an error if sufficient space cannot be reserved to accomodate `extra` elements.
     ///
-    /// The behavior is not transactional, so that even in the case an error is
-    /// returned, extra capacity may have been reserved.
+    /// The behavior is not transactional, so that even in the case an error is returned, extra capacity may have been
+    /// reserved.
     ///
     /// #   Example
     ///
@@ -456,20 +441,17 @@ impl<T, H: HashHooks> HashSet<T, H> {
         //  -   `size` does not increase between creation and use.
         unsafe { self.shared_writer() }.try_reserve(Size(extra))
 
-        //  Note:   The writes are sequenced with a store to `self.size`, this
-        //          is unnecessary here as there will be no read before
-        //          `self.size` increases to cover the new buckets.
+        //  Note:   The writes are sequenced with a store to `self.size`, this is unnecessary here as there will be no
+        //          read before `self.size` increases to cover the new buckets.
     }
 
     /// Reserves buckets for up to `extra` elements.
     ///
-    /// Calling this method is equivalent to calling `try_reserve` and panicking
-    /// on error.
+    /// Calling this method is equivalent to calling `try_reserve` and panicking on error.
     ///
     /// #   Panics
     ///
-    /// Panics if sufficient space cannot be reserve to accomodate `extra`
-    /// elements.
+    /// Panics if sufficient space cannot be reserve to accomodate `extra` elements.
     ///
     /// #   Example
     ///
@@ -511,8 +493,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
     {
         //  Safety:
         //  -   `size` does not increase between creation and use.
-        let (size, entry) = unsafe { self.shared_writer() }
-            .try_insert(Entry(value))?;
+        let (size, entry) = unsafe { self.shared_writer() }.try_insert(Entry(value))?;
 
         self.size.store(size.0);
 
@@ -521,8 +502,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
 
     /// Inserts a value into the set.
     ///
-    /// Calling this method is equivalent to calling `try_insert` and panicking on
-    /// error.
+    /// Calling this method is equivalent to calling `try_insert` and panicking on error.
     ///
     /// #   Panics
     ///
@@ -550,19 +530,17 @@ impl<T, H: HashHooks> HashSet<T, H> {
                 //  Safety:
                 //  -   As the name of the above function implies...
                 unsafe { hint::unreachable_unchecked() }
-            },
+            }
         }
     }
 
     /// Inserts multiple values in the set.
     ///
-    /// If a value cannot be inserted because it is already present, it is
-    /// dropped.
+    /// If a value cannot be inserted because it is already present, it is dropped.
     ///
     /// #   Errors
     ///
-    /// Returns an error if any of the values cannot be inserted, which may
-    /// happen either:
+    /// Returns an error if any of the values cannot be inserted, which may happen either:
     ///
     /// -   If `capacity` reaches `max_capacity`.
     /// -   Or if the allocator fails to allocate memory.
@@ -585,8 +563,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
 
         //  Safety:
         //  -   `size` does not increase between creation and use.
-        let (size, failure) = unsafe { self.shared_writer() }
-            .try_extend(collection);
+        let (size, failure) = unsafe { self.shared_writer() }.try_extend(collection);
 
         self.size.store(size.0);
 
@@ -599,11 +576,9 @@ impl<T, H: HashHooks> HashSet<T, H> {
 
     /// Inserts multiple values in the set.
     ///
-    /// If a value cannot be inserted because it is already present, it is
-    /// dropped.
+    /// If a value cannot be inserted because it is already present, it is dropped.
     ///
-    /// Calling this method is equivalent to calling `try_extend` and panicking
-    /// on error.
+    /// Calling this method is equivalent to calling `try_extend` and panicking on error.
     ///
     /// #   Panics
     ///
@@ -630,9 +605,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
         let size = Size(self.size.load());
         //  Safety:
         //  -   `size` is less than the size of the collection.
-        unsafe {
-            BucketsSharedReader::new(&self.buckets, &self.hooks, size, self.capacity)
-        }
+        unsafe { BucketsSharedReader::new(&self.buckets, &self.hooks, size, self.capacity) }
     }
 
     //  Returns a SharedWriter.
@@ -649,8 +622,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
     }
 }
 
-/// A `HashSet<T>` can be `Send` across threads whenever the standard
-/// `HashSet` can.
+/// A `HashSet<T>` can be `Send` across threads whenever the standard `HashSet` can.
 ///
 /// #   Example of Send.
 ///
@@ -726,7 +698,9 @@ impl<T, H: HashHooks> Drop for HashSet<T, H> {
 }
 
 impl<T, H: HashHooks + Default> Default for HashSet<T, H> {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T: fmt::Debug, H: HashHooks> fmt::Debug for HashSet<T, H> {
@@ -742,7 +716,7 @@ where
 {
     fn from_iter<C>(collection: C) -> Self
     where
-        C: IntoIterator<Item = T>
+        C: IntoIterator<Item = T>,
     {
         let result: HashSet<_, _> = HashSet::with_hooks(H::default());
         result.extend(collection);
@@ -759,60 +733,61 @@ fn panic_from_failure(failure: Failure) {
 #[cfg(test)]
 mod tests {
 
-use std::mem;
+    use std::mem;
 
-use super::HashSet;
+    use super::HashSet;
 
-use crate::utils::tester::*;
+    use crate::utils::tester::*;
 
-#[test]
-fn size_of() {
-    const PTR_SIZE: usize = mem::size_of::<usize>();
+    #[test]
+    fn size_of() {
+        const PTR_SIZE: usize = mem::size_of::<usize>();
 
-    assert_eq!(24 * PTR_SIZE, mem::size_of::<HashSet<u8>>());
-}
+        assert_eq!(24 * PTR_SIZE, mem::size_of::<HashSet<u8>>());
+    }
 
-#[test]
-fn trait_debug() {
-    use std::fmt::Write;
+    #[test]
+    fn trait_debug() {
+        use std::fmt::Write;
 
-    let set: HashSet<_> = HashSet::new();
-    set.extend([1, 2, 3, 4, 5].iter().copied());
+        let set: HashSet<_> = HashSet::new();
+        set.extend([1, 2, 3, 4, 5].iter().copied());
 
-    let mut sink = String::new();
-    let _ = write!(sink, "{:?}", set);
+        let mut sink = String::new();
+        let _ = write!(sink, "{:?}", set);
 
-    println!("{}", sink);
+        println!("{}", sink);
 
-    assert!(sink.starts_with("HashSet { capacity: 8, length: 5, buckets: [["));
-    assert!(sink.ends_with("]] }"));
-}
+        assert!(sink.starts_with("HashSet { capacity: 8, length: 5, buckets: [["));
+        assert!(sink.ends_with("]] }"));
+    }
 
-#[test]
-fn trait_from_iterator() {
-    let set: HashSet<_> = [1, 2, 3, 4, 5].iter().copied().collect();
+    #[test]
+    fn trait_from_iterator() {
+        let set: HashSet<_> = [1, 2, 3, 4, 5].iter().copied().collect();
 
-    assert_eq!(5, set.len());
-}
+        assert_eq!(5, set.len());
+    }
 
-#[test]
-fn panic_drop() {
-    use std::panic::{AssertUnwindSafe, catch_unwind};
+    #[test]
+    fn panic_drop() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
 
-    let collection = vec![
-        PanickyDrop::new(0), PanickyDrop::new(1),
-        PanickyDrop::panicky(2), PanickyDrop::new(3)
-    ];
+        let collection = vec![
+            PanickyDrop::new(0),
+            PanickyDrop::new(1),
+            PanickyDrop::panicky(2),
+            PanickyDrop::new(3),
+        ];
 
-    let mut set: HashSet<_> = HashSet::default();
-    set.extend(collection);
+        let mut set: HashSet<_> = HashSet::default();
+        set.extend(collection);
 
-    let panicked = catch_unwind(AssertUnwindSafe(|| {
-        set.clear();
-    }));
-    assert!(panicked.is_err());
+        let panicked = catch_unwind(AssertUnwindSafe(|| {
+            set.clear();
+        }));
+        assert!(panicked.is_err());
 
-    assert_eq!(0, set.len());
-}
-
-}   //  mod tests
+        assert_eq!(0, set.len());
+    }
+} //  mod tests

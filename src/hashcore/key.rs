@@ -10,9 +10,11 @@ macro_rules! impl_builtin {
     ($name:ident) => {
         impl Key for $name {
             type Key = Self;
-            fn key(&self) -> &Self { self }
+            fn key(&self) -> &Self {
+                self
+            }
         }
-    }
+    };
 }
 
 impl_builtin!(bool);

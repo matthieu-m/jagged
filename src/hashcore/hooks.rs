@@ -9,16 +9,14 @@ use super::root::hash;
 /// HashHooks
 ///
 /// There are three important hooks for a HashMap and HashSet:
-/// -   The maximum number of buckets, which defines the capacity and the memory
-///     footprint.
+/// -   The maximum number of buckets, which defines the capacity and the memory footprint.
 /// -   The hashing algorithm.
 /// -   The allocator and deallocator functions.
 ///
-/// The HashHooks trait allows customizing allocation, but unfortunately
-/// does not allow customizing the size, as this does not quite yet work...
+/// The HashHooks trait allows customizing allocation, but unfortunately does not allow customizing the size, as this
+/// does not quite yet work...
 ///
-/// Also see DefaultHashHooks for the default, when the `alloc`
-/// feature is used.
+/// Also see DefaultHashHooks for the default, when the `alloc` feature is used.
 pub trait HashHooks: allocator::Allocator + hash::BuildHasher {}
 
 /// DefaultHashHooks
@@ -44,7 +42,9 @@ impl allocator::Allocator for DefaultHashHooks {
 impl hash::BuildHasher for DefaultHashHooks {
     type Hasher = hash_map::DefaultHasher;
 
-    fn build_hasher(&self) -> Self::Hasher { self.1.build_hasher() }
+    fn build_hasher(&self) -> Self::Hasher {
+        self.1.build_hasher()
+    }
 }
 
 #[cfg(feature = "with-std")]

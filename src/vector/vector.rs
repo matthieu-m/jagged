@@ -5,10 +5,8 @@ use super::root::{fmt, iter, ops};
 use super::{VectorReader, VectorSnapshot};
 
 use super::atomic::AcqRelUsize;
-use super::buckets_api::{
-    BucketArray, BucketsExclusiveWriter, BucketsSharedReader, BucketsSharedWriter
-};
-use super::capacity::{Capacity, BucketIndex, ElementIndex, Length};
+use super::buckets_api::{BucketArray, BucketsExclusiveWriter, BucketsSharedReader, BucketsSharedWriter};
+use super::capacity::{BucketIndex, Capacity, ElementIndex, Length};
 use super::failure::{Failure, Result};
 use super::hooks::VectorHooks;
 
@@ -21,8 +19,7 @@ use super::hooks::DefaultVectorHooks;
 
 /// `Vector`
 ///
-/// Limitation: the maximum number of buckets cannot be specified, due to the
-///             lack of const generics.
+/// Limitation: the maximum number of buckets cannot be specified, due to the lack of const generics.
 #[cfg(not(feature = "with-std"))]
 pub struct Vector<T, H: VectorHooks> {
     hooks: H,
@@ -33,8 +30,7 @@ pub struct Vector<T, H: VectorHooks> {
 
 /// `Vector`
 ///
-/// Limitation: the maximum number of buckets cannot be specified, due to the
-///             lack of const generics.
+/// Limitation: the maximum number of buckets cannot be specified, due to the lack of const generics.
 #[cfg(feature = "with-std")]
 pub struct Vector<T, H: VectorHooks = DefaultVectorHooks> {
     //  Hooks of the Vector.
@@ -46,14 +42,12 @@ pub struct Vector<T, H: VectorHooks = DefaultVectorHooks> {
     //  -   Should be loaded before reading any element.
     //  -   Should be stored into after writing any element.
     //
-    //  The Acquire/Release semantics are used to guarantee that when an element
-    //  is read it reflects the last write.
+    //  The Acquire/Release semantics are used to guarantee that when an element is read it reflects the last write.
     length: AcqRelUsize,
     buckets: BucketArray<T>,
 }
 impl<T, H: VectorHooks + Default> Vector<T, H> {
-    /// Creates a new instance of the `Vector` with a maximum capacity of 1 for
-    /// the first bucket.
+    /// Creates a new instance of the `Vector` with a maximum capacity of 1 for the first bucket.
     ///
     /// No memory is allocated.
     ///
@@ -67,10 +61,11 @@ impl<T, H: VectorHooks + Default> Vector<T, H> {
     /// assert_eq!(0, vec.capacity());
     /// assert_eq!(2 * 1024 * 1024, vec.max_capacity());
     /// ```
-    pub fn new() -> Self { Self::with_hooks(H::default()) }
+    pub fn new() -> Self {
+        Self::with_hooks(H::default())
+    }
 
-    /// Creates a new instace of the `Vector` with a capacity of at least
-    /// `capacity_of_0` for the first bucket.
+    /// Creates a new instace of the `Vector` with a capacity of at least `capacity_of_0` for the first bucket.
     ///
     /// If `capacity_of_0` is not a power of 2, it is rounded up.
     ///
@@ -96,8 +91,7 @@ impl<T, H: VectorHooks + Default> Vector<T, H> {
 }
 
 impl<T, H: VectorHooks> Vector<T, H> {
-    /// Creates a new instance of the `Vector` with a capacity of 1 for
-    /// the first bucket.
+    /// Creates a new instance of the `Vector` with a capacity of 1 for the first bucket.
     ///
     /// No memory is allocated.
     ///
@@ -115,8 +109,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
         Self::with_max_capacity_and_hooks(1, hooks)
     }
 
-    /// Creates a new instace of the `Vector` with a capacity of at least
-    /// `capacity_of_0` for the first bucket.
+    /// Creates a new instace of the `Vector` with a capacity of at least `capacity_of_0` for the first bucket.
     ///
     /// If `capacity_of_0` is not a power of 2, it is rounded up.
     ///
@@ -137,9 +130,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
     /// assert_eq!(0, vec.capacity());
     /// assert_eq!(8 * 1024 * 1024, vec.max_capacity());
     /// ```
-    pub fn with_max_capacity_and_hooks(capacity_of_0: usize, hooks: H)
-        -> Self
-    {
+    pub fn with_max_capacity_and_hooks(capacity_of_0: usize, hooks: H) -> Self {
         Self {
             hooks,
             capacity: BucketArray::<T>::capacity(capacity_of_0),
@@ -152,14 +143,11 @@ impl<T, H: VectorHooks> Vector<T, H> {
 impl<T, H: VectorHooks> Vector<T, H> {
     /// Creates a `VectorReader`.
     ///
-    /// A `VectorReader` is a read-only view of the `Vector` instance it is
-    /// created from which it reflects updates.
+    /// A `VectorReader` is a read-only view of the `Vector` instance it is created from which it reflects updates.
     ///
-    /// Reflecting updates comes at the small synchronization cost of having to
-    /// read one atomic variable for each access.
+    /// Reflecting updates comes at the small synchronization cost of having to read one atomic variable for each access.
     ///
-    /// If synchronization is unnecessary, consider using a `VectorSnapshot`
-    /// instead.
+    /// If synchronization is unnecessary, consider using a `VectorSnapshot` instead.
     ///
     /// #   Example
     ///
@@ -177,9 +165,8 @@ impl<T, H: VectorHooks> Vector<T, H> {
 
     /// Creates a `VectorSnapshot`.
     ///
-    /// A `VectorSnapshot` is a read-only view of the `Vector` instance it is
-    /// created from which it does not reflect updates. Once created, it is
-    /// immutable.
+    /// A `VectorSnapshot` is a read-only view of the `Vector` instance it is created from which it does not reflect
+    /// updates. Once created, it is immutable.
     ///
     /// A `VectorSnapshot` can also be created from a `VectorReader`.
     ///
@@ -209,7 +196,9 @@ impl<T, H: VectorHooks> Vector<T, H> {
     /// vec.push(1);
     /// assert!(!vec.is_empty());
     /// ```
-    pub fn is_empty(&self) -> bool { self.shared_reader().is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.shared_reader().is_empty()
+    }
 
     /// Returns the number of elements contained in the instance.
     ///
@@ -223,7 +212,9 @@ impl<T, H: VectorHooks> Vector<T, H> {
     /// vec.push(1);
     /// assert_eq!(1, vec.len());
     /// ```
-    pub fn len(&self) -> usize { self.shared_reader().len() }
+    pub fn len(&self) -> usize {
+        self.shared_reader().len()
+    }
 
     /// Returns the current capacity of the instance.
     ///
@@ -247,9 +238,8 @@ impl<T, H: VectorHooks> Vector<T, H> {
     /// The maximum capacity depends:
     ///
     /// -   On the capacity of the first bucket, 1 by default.
-    /// -   On the maximum number of buckets, at most 22 in the absence of const
-    ///     generics, but possibly less if the capacity of the first bucket is
-    ///     really large.
+    /// -   On the maximum number of buckets, at most 22 in the absence of const generics, but possibly less if the
+    ///     capacity of the first bucket is really large.
     ///
     /// #   Example
     ///
@@ -258,7 +248,9 @@ impl<T, H: VectorHooks> Vector<T, H> {
     /// let vec: Vector<i32> = Vector::new();
     /// assert_eq!(2 * 1024 * 1024, vec.max_capacity());
     /// ```
-    pub fn max_capacity(&self) -> usize { self.shared_reader().max_capacity() }
+    pub fn max_capacity(&self) -> usize {
+        self.shared_reader().max_capacity()
+    }
 
     /// Returns the number of buckets currently used.
     ///
@@ -280,10 +272,8 @@ impl<T, H: VectorHooks> Vector<T, H> {
     ///
     /// In general, this method should return 22.
     ///
-    /// If the capacity of the first bucket is large enough that having 22
-    /// buckets would result in `max_capacity` overflowing `usize`, then the
-    /// maximum number of buckets will be just as low as necessary to avoid this
-    /// fate.
+    /// If the capacity of the first bucket is large enough that having 22 buckets would result in `max_capacity`
+    /// overflowing `usize`, then the maximum number of buckets will be just as low as necessary to avoid this fate.
     ///
     /// #   Example
     ///
@@ -295,7 +285,9 @@ impl<T, H: VectorHooks> Vector<T, H> {
     /// let vec: Vector<i32> = Vector::with_max_capacity(usize::MAX / 8);
     /// assert_eq!(3, vec.max_buckets());
     /// ```
-    pub fn max_buckets(&self) -> usize { self.shared_reader().max_buckets() }
+    pub fn max_buckets(&self) -> usize {
+        self.shared_reader().max_buckets()
+    }
 
     /// Returns a reference to the ith element, if any.
     ///
@@ -411,17 +403,14 @@ impl<T, H: VectorHooks> Vector<T, H> {
         //  Safety:
         //  -   length exactly matches the length of the vector.
         //  -   length does not increase between creation and use.
-        let exclusive = unsafe {
-            BucketsExclusiveWriter::new(&mut self.buckets, length, self.capacity)
-        };
+        let exclusive = unsafe { BucketsExclusiveWriter::new(&mut self.buckets, length, self.capacity) };
 
         exclusive.bucket_mut(BucketIndex(i))
     }
 
     /// Clears the instance.
     ///
-    /// The instance is then empty, although it retains previously allocated
-    /// memory.
+    /// The instance is then empty, although it retains previously allocated memory.
     ///
     /// Use `shrink` to release excess memory.
     ///
@@ -445,17 +434,14 @@ impl<T, H: VectorHooks> Vector<T, H> {
         //  Safety:
         //  -   length exactly matches the length of the vector.
         //  -   length does not increase between creation and use.
-        let exclusive = unsafe {
-            BucketsExclusiveWriter::new(&mut self.buckets, length, self.capacity)
-        };
+        let exclusive = unsafe { BucketsExclusiveWriter::new(&mut self.buckets, length, self.capacity) };
 
         exclusive.clear();
     }
 
     /// Shrinks the instance.
     ///
-    /// This method releases excess capacity, retaining just enough to
-    /// accomodate the current elements.
+    /// This method releases excess capacity, retaining just enough to accomodate the current elements.
     ///
     /// #   Example
     ///
@@ -478,45 +464,41 @@ impl<T, H: VectorHooks> Vector<T, H> {
 
     /// Reserves buckets for up to `extra` elements.
     ///
-    /// Calling this method reserves enough capacity to be able to push `extra`
-    /// more elements into the instance without allocation failure.
+    /// Calling this method reserves enough capacity to be able to push `extra` more elements into the instance without
+    /// allocation failure.
     ///
-    /// Calling this method has no effect if there is already sufficient
-    /// capacity for `extra` elements.
+    /// Calling this method has no effect if there is already sufficient capacity for `extra` elements.
     ///
     /// More capacity than strictly necessary may be allocated.
     ///
     /// #   Errors
     ///
-    /// Returns an error if sufficient space cannot be reserved to accomodate
-    /// `extra` elements.
+    /// Returns an error if sufficient space cannot be reserved to accomodate `extra` elements.
     ///
-    /// The behavior is not transactional, so that even in the case an error is
-    /// returned, extra capacity may have been reserved.
+    /// The behavior is not transactional, so that even in the case an error is returned, extra capacity may have been
+    /// reserved.
     ///
     /// #   Example
     ///
     /// ```
     /// #   use jagged::failure::Failure;
     /// #   use jagged::vector::Vector;
-    /// //  BytesOverflow signals that the size of the bucket to allocate, in
-    /// //  bytes, overflows `usize`.
+    /// //  BytesOverflow signals that the size of the bucket to allocate, in  bytes, overflows `usize`.
     /// let vec: Vector<i32> = Vector::with_max_capacity(usize::MAX / 2);
     /// assert_eq!(Err(Failure::BytesOverflow), vec.try_reserve(1));
     ///
-    /// //  ElementsOverflow signals that the total number of elements overflows
-    /// //  `usize`.
+    /// //  ElementsOverflow signals that the total number of elements overflows `usize`.
     /// let vec: Vector<i32> = Vector::new();
     /// vec.push(1);
     /// assert_eq!(Err(Failure::ElementsOverflow), vec.try_reserve(usize::MAX));
     ///
-    /// //  OutOfBuckets signals that the maximum number of buckets has been
-    /// //  reached, and no further bucket can be reserved.
+    /// //  OutOfBuckets signals that the maximum number of buckets has been reached, and no further bucket can be
+    /// //  reserved.
     /// let vec: Vector<i32> = Vector::new();
     /// assert_eq!(Err(Failure::OutOfBuckets), vec.try_reserve(usize::MAX));
     ///
-    /// //  OutOfMemory signals that the allocator failed to provide the
-    /// //  requested memory; here because the amount requested is too large.
+    /// //  OutOfMemory signals that the allocator failed to provide the requested memory; here because the amount
+    /// //  requested is too large.
     /// let vec: Vector<i32> = Vector::with_max_capacity(usize::MAX / 8);
     /// assert_eq!(Err(Failure::OutOfMemory), vec.try_reserve(1));
     ///
@@ -530,20 +512,17 @@ impl<T, H: VectorHooks> Vector<T, H> {
         //  -   length does not increase between creation and use.
         unsafe { self.shared_writer() }.try_reserve(Length(extra), &self.hooks)
 
-        //  Note:   The writes are sequenced with a store to `self.length`, this
-        //          is unnecessary here as there will be no read before
-        //          `self.length` increases to cover the new buckets.
+        //  Note:   The writes are sequenced with a store to `self.length`, this is unnecessary here as there will be no
+        //          read before `self.length` increases to cover the new buckets.
     }
 
     /// Reserves buckets for up to `extra` elements.
     ///
-    /// Calling this method is equivalent to calling `try_reserve` and panicking
-    /// on error.
+    /// Calling this method is equivalent to calling `try_reserve` and panicking on error.
     ///
     /// #   Panics
     ///
-    /// Panics if sufficient space cannot be reserve to accomodate `extra`
-    /// elements.
+    /// Panics if sufficient space cannot be reserve to accomodate `extra` elements.
     ///
     /// #   Example
     ///
@@ -577,8 +556,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
     pub fn try_push(&self, value: T) -> Result<()> {
         //  Safety:
         //  -   length does not increase between creation and use.
-        let length = unsafe { self.shared_writer() }
-            .try_push(value, &self.hooks)?;
+        let length = unsafe { self.shared_writer() }.try_push(value, &self.hooks)?;
 
         self.length.store(length.0);
 
@@ -587,8 +565,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
 
     /// Appends an element to the back.
     ///
-    /// Calling this method is equivalent to calling `try_push` and panicking on
-    /// error.
+    /// Calling this method is equivalent to calling `try_push` and panicking on error.
     ///
     /// #   Panics
     ///
@@ -610,8 +587,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
     ///
     /// #   Errors
     ///
-    /// Returns an error if any of the values cannot be pushed, which may happen
-    /// either:
+    /// Returns an error if any of the values cannot be pushed, which may happen either:
     ///
     /// -   If `capacity` reaches `max_capacity`.
     /// -   Or if the allocator fails to allocate memory.
@@ -626,12 +602,11 @@ impl<T, H: VectorHooks> Vector<T, H> {
     /// ```
     pub fn try_extend<C>(&self, collection: C) -> Result<()>
     where
-        C: IntoIterator<Item = T>
+        C: IntoIterator<Item = T>,
     {
         //  Safety:
         //  -   length does not increase between creation and use.
-        let (length, failure) = unsafe { self.shared_writer() }
-            .try_extend(collection, &self.hooks);
+        let (length, failure) = unsafe { self.shared_writer() }.try_extend(collection, &self.hooks);
 
         self.length.store(length.0);
 
@@ -644,8 +619,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
 
     /// Appends multiple elements to the back.
     ///
-    /// Calling this method is equivalent to calling `try_extend` and panicking
-    /// on error.
+    /// Calling this method is equivalent to calling `try_extend` and panicking on error.
     ///
     /// #   Panics
     ///
@@ -661,7 +635,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
     /// ```
     pub fn extend<C>(&self, collection: C)
     where
-        C: IntoIterator<Item = T>
+        C: IntoIterator<Item = T>,
     {
         self.try_extend(collection).unwrap_or_else(panic_from_failure);
     }
@@ -671,9 +645,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
         let length = Length(self.length.load());
         //  Safety:
         //  -   length is less than the length of the vector.
-        unsafe {
-            BucketsSharedReader::new(&self.buckets, length, self.capacity)
-        }
+        unsafe { BucketsSharedReader::new(&self.buckets, length, self.capacity) }
     }
 
     //  Returns a SharedWriter.
@@ -690,8 +662,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
     }
 }
 
-/// A `Vector<T>` can be `Send` across threads whenever a `Vec<T>` can, unlike a
-/// `Vec<T>` it is never `Sync` however.
+/// A `Vector<T>` can be `Send` across threads whenever a `Vec<T>` can, unlike a `Vec<T>` it is never `Sync` however.
 ///
 /// #   Example of Send.
 ///
@@ -709,8 +680,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
 ///
 /// #   Example of not Send.
 ///
-/// Types that are not Send, however, prevent from sending `Vector` across
-/// threads.
+/// Types that are not Send, however, prevent from sending `Vector` across threads.
 ///
 /// ```compile_fail
 /// # use std::rc::Rc;
@@ -768,7 +738,9 @@ impl<T, H: VectorHooks> Drop for Vector<T, H> {
 }
 
 impl<T, H: VectorHooks + Default> Default for Vector<T, H> {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T: fmt::Debug, H: VectorHooks> fmt::Debug for Vector<T, H> {
@@ -780,7 +752,7 @@ impl<T: fmt::Debug, H: VectorHooks> fmt::Debug for Vector<T, H> {
 impl<T, H: VectorHooks + Default> iter::FromIterator<T> for Vector<T, H> {
     fn from_iter<C>(collection: C) -> Self
     where
-        C: IntoIterator<Item = T>
+        C: IntoIterator<Item = T>,
     {
         let result: Vector<_, _> = Vector::with_hooks(H::default());
         result.extend(collection);
@@ -811,60 +783,61 @@ fn panic_from_failure(failure: Failure) {
 #[cfg(test)]
 mod tests {
 
-use std::mem;
+    use std::mem;
 
-use super::Vector;
+    use super::Vector;
 
-use crate::utils::tester::*;
+    use crate::utils::tester::*;
 
-#[test]
-fn size_of() {
-    const PTR_SIZE: usize = mem::size_of::<usize>();
+    #[test]
+    fn size_of() {
+        const PTR_SIZE: usize = mem::size_of::<usize>();
 
-    assert_eq!(24 * PTR_SIZE, mem::size_of::<Vector<u8>>());
-}
+        assert_eq!(24 * PTR_SIZE, mem::size_of::<Vector<u8>>());
+    }
 
-#[test]
-fn trait_debug() {
-    use std::fmt::Write;
+    #[test]
+    fn trait_debug() {
+        use std::fmt::Write;
 
-    let vec: Vector<_> = Vector::new();
-    vec.extend([1, 2, 3, 4, 5].iter().copied());
+        let vec: Vector<_> = Vector::new();
+        vec.extend([1, 2, 3, 4, 5].iter().copied());
 
-    let mut sink = String::new();
-    let _ = write!(sink, "{:?}", vec);
+        let mut sink = String::new();
+        let _ = write!(sink, "{:?}", vec);
 
-    assert_eq!(
-        "Vector { capacity: 8, length: 5, buckets: [[1], [2], [3, 4], [5]] }",
-        sink
-    );
-}
+        assert_eq!(
+            "Vector { capacity: 8, length: 5, buckets: [[1], [2], [3, 4], [5]] }",
+            sink
+        );
+    }
 
-#[test]
-fn trait_from_iterator() {
-    let vec: Vector<_> = [1, 2, 3, 4, 5].iter().copied().collect();
+    #[test]
+    fn trait_from_iterator() {
+        let vec: Vector<_> = [1, 2, 3, 4, 5].iter().copied().collect();
 
-    assert_eq!(5, vec.len());
-}
+        assert_eq!(5, vec.len());
+    }
 
-#[test]
-fn panic_drop() {
-    use std::panic::{AssertUnwindSafe, catch_unwind};
+    #[test]
+    fn panic_drop() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
 
-    let collection = vec![
-        PanickyDrop::new(0), PanickyDrop::new(1),
-        PanickyDrop::panicky(2), PanickyDrop::new(3)
-    ];
+        let collection = vec![
+            PanickyDrop::new(0),
+            PanickyDrop::new(1),
+            PanickyDrop::panicky(2),
+            PanickyDrop::new(3),
+        ];
 
-    let mut vec: Vector<_> = Vector::default();
-    vec.extend(collection);
+        let mut vec: Vector<_> = Vector::default();
+        vec.extend(collection);
 
-    let panicked = catch_unwind(AssertUnwindSafe(|| {
-        vec.clear();
-    }));
-    assert!(panicked.is_err());
+        let panicked = catch_unwind(AssertUnwindSafe(|| {
+            vec.clear();
+        }));
+        assert!(panicked.is_err());
 
-    assert_eq!(0, vec.len());
-}
-
-}   //  mod tests
+        assert_eq!(0, vec.len());
+    }
+} //  mod tests

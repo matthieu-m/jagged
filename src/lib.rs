@@ -1,5 +1,4 @@
 #![cfg_attr(not(feature = "with-std"), no_std)]
-
 #![allow(clippy::module_inception)]
 
 //! #   The Jagged Library
@@ -9,8 +8,7 @@
 //! -   The `HashMap`: an insert-only `HashMap`.
 //! -   The `HashSet`: an insert-only `HashSet`.
 //!
-//! The set of concurrent write operations is limited, in exchange for
-//! performance and wait-freedom.
+//! The set of concurrent write operations is limited, in exchange for performance and wait-freedom.
 
 pub mod allocator;
 pub mod failure;

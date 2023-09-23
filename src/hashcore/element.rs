@@ -16,11 +16,16 @@ pub struct Element<T> {
 impl<T> Element<T> {
     //  Creates a new instance, marked as uninitialized.
     pub fn new() -> Self {
-        Element { generation: RelaxedUsize::new(UNINTIALIZED), raw: Raw::default() }
+        Element {
+            generation: RelaxedUsize::new(UNINTIALIZED),
+            raw: Raw::default(),
+        }
     }
 
     //  Checks whether the element is initialized, or not.
-    pub fn is_initialized(&self) -> bool { self.generation.load() != UNINTIALIZED }
+    pub fn is_initialized(&self) -> bool {
+        self.generation.load() != UNINTIALIZED
+    }
 
     //  Gets the element, if its generation is less than or equal to the specified one.
     //
@@ -83,65 +88,66 @@ impl<T> Element<T> {
 }
 
 impl<T> Default for Element<T> {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 //
 //  Implementation Details
 //
 
-const UNINTIALIZED : usize = usize::MAX;
+const UNINTIALIZED: usize = usize::MAX;
 
 #[cfg(test)]
 mod tests {
 
-use super::*;
+    use super::*;
 
-#[test]
-fn default() {
-    let element: Element<String> = Element::default();
+    #[test]
+    fn default() {
+        let element: Element<String> = Element::default();
 
-    assert!(!element.is_initialized());
-    assert_eq!(None, unsafe { element.get(Generation(UNINTIALIZED)) });
-}
+        assert!(!element.is_initialized());
+        assert_eq!(None, unsafe { element.get(Generation(UNINTIALIZED)) });
+    }
 
-#[test]
-fn get_set_generation() {
-    let element = Element::default();
-    let generation = 3;
+    #[test]
+    fn get_set_generation() {
+        let element = Element::default();
+        let generation = 3;
 
-    unsafe { element.set(Generation(generation), 42) };
+        unsafe { element.set(Generation(generation), 42) };
 
-    assert_eq!(None, unsafe { element.get(Generation(0)) });
-    assert_eq!(None, unsafe { element.get(Generation(generation)) });
-    assert_eq!(Some(&42), unsafe { element.get(Generation(generation + 1)) });
-    assert_eq!(Some(&42), unsafe { element.get(Generation(generation + 1)) });
-}
+        assert_eq!(None, unsafe { element.get(Generation(0)) });
+        assert_eq!(None, unsafe { element.get(Generation(generation)) });
+        assert_eq!(Some(&42), unsafe { element.get(Generation(generation + 1)) });
+        assert_eq!(Some(&42), unsafe { element.get(Generation(generation + 1)) });
+    }
 
-#[test]
-fn drop_initialized() {
-    let element = Element::default();
-    let generation = Generation(3);
+    #[test]
+    fn drop_initialized() {
+        let element = Element::default();
+        let generation = Generation(3);
 
-    unsafe { element.set(generation, 42) };
+        unsafe { element.set(generation, 42) };
 
-    assert_eq!(Some(&42), unsafe { element.get(Generation(generation.0 + 1)) });
+        assert_eq!(Some(&42), unsafe { element.get(Generation(generation.0 + 1)) });
 
-    let mut element = element;
-    element.drop();
+        let mut element = element;
+        element.drop();
 
-    assert!(!element.is_initialized());
-    assert_eq!(None, unsafe { element.get(Generation(UNINTIALIZED - 1)) });
-}
+        assert!(!element.is_initialized());
+        assert_eq!(None, unsafe { element.get(Generation(UNINTIALIZED - 1)) });
+    }
 
-#[test]
-fn drop_uninitialized() {
-    let mut element: Element<String> = Element::default();
+    #[test]
+    fn drop_uninitialized() {
+        let mut element: Element<String> = Element::default();
 
-    element.drop();
+        element.drop();
 
-    assert!(!element.is_initialized());
-    assert_eq!(None, unsafe { element.get(Generation(UNINTIALIZED - 1)) });
-}
-
+        assert!(!element.is_initialized());
+        assert_eq!(None, unsafe { element.get(Generation(UNINTIALIZED - 1)) });
+    }
 }

@@ -1,7 +1,7 @@
 //! Internal testing utilities
 
-use crate::root::{cell, fmt, hash, iter, ops, ptr};
 use crate::root::sync::atomic::{AtomicUsize, Ordering};
+use crate::root::{cell, fmt, hash, iter, ops, ptr};
 
 use crate::allocator::{Allocator, DefaultAllocator, Layout};
 use crate::hashcore::key::Key;
@@ -55,16 +55,16 @@ impl TestAllocator {
         allocator
     }
 
-    pub fn unlimited() -> TestAllocator { TestAllocator::new(usize::MAX) }
+    pub fn unlimited() -> TestAllocator {
+        TestAllocator::new(usize::MAX)
+    }
 
     pub fn allocations(&self) -> Vec<Allocation> {
         self.allocations.borrow().clone()
     }
 
     pub fn allocation_sizes(&self) -> Vec<usize> {
-        self.allocations.borrow().iter()
-            .map(|&a| a.size)
-            .collect()
+        self.allocations.borrow().iter().map(|&a| a.size).collect()
     }
 
     pub fn clear(&self) {
@@ -105,14 +105,15 @@ impl Allocator for TestAllocator {
         if let Some(index) = self.locate(allocation) {
             self.allocations.borrow_mut().remove(index);
         } else {
-            panic!("Could not find {:?} in {:?}",
-                allocation, &*self.allocations.borrow());
+            panic!("Could not find {:?} in {:?}", allocation, &*self.allocations.borrow());
         }
     }
 }
 
 impl Drop for TestAllocator {
-    fn drop(&mut self) { self.clear() }
+    fn drop(&mut self) {
+        self.clear()
+    }
 }
 
 //  Test Hooks
@@ -135,7 +136,9 @@ impl TestHooks {
         hooks
     }
 
-    pub fn unlimited() -> TestHooks { TestHooks::new(usize::MAX) }
+    pub fn unlimited() -> TestHooks {
+        TestHooks::new(usize::MAX)
+    }
 
     pub fn set_panic_hash(&self, count: u64) {
         self.panic_hash.set(count);
@@ -155,7 +158,9 @@ impl Default for TestHooks {
 impl ops::Deref for TestHooks {
     type Target = TestAllocator;
 
-    fn deref(&self) -> &Self::Target { &self.allocator }
+    fn deref(&self) -> &Self::Target {
+        &self.allocator
+    }
 }
 
 impl Allocator for TestHooks {
@@ -181,12 +186,13 @@ impl hash::BuildHasher for TestHooks {
     }
 }
 
-//  A very "poor" hasher, in a sense, however controlling the hash is very
-//  useful for functional testing.
+//  A very "poor" hasher, in a sense, however controlling the hash is very useful for functional testing.
 pub struct TestHasher(u64);
 
 impl hash::Hasher for TestHasher {
-    fn finish(&self) -> u64 { self.0 }
+    fn finish(&self) -> u64 {
+        self.0
+    }
 
     fn write(&mut self, _: &[u8]) {}
 }
@@ -197,13 +203,21 @@ impl hash::Hasher for TestHasher {
 pub struct SpyCount(AtomicUsize);
 
 impl SpyCount {
-    pub fn zero() -> Self { SpyCount(AtomicUsize::new(0)) }
+    pub fn zero() -> Self {
+        SpyCount(AtomicUsize::new(0))
+    }
 
-    pub fn get(&self) -> usize { self.0.load(Ordering::Relaxed) }
+    pub fn get(&self) -> usize {
+        self.0.load(Ordering::Relaxed)
+    }
 
-    fn decrement(&self) { self.0.fetch_sub(1, Ordering::Relaxed); }
+    fn decrement(&self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
 
-    fn increment(&self) { self.0.fetch_add(1, Ordering::Relaxed); }
+    fn increment(&self) {
+        self.0.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 //  Spy Element
@@ -246,7 +260,9 @@ impl<'a> fmt::Debug for SpyKey<'a> {
 impl<'a> Key for SpyKey<'a> {
     type Key = u64;
 
-    fn key(&self) -> &Self::Key { &self.0 }
+    fn key(&self) -> &Self::Key {
+        &self.0
+    }
 }
 
 //  An Allocator which panics when failing to allocate or deallocate.
@@ -256,7 +272,9 @@ pub struct PanickyAllocator(TestAllocator);
 impl ops::Deref for PanickyAllocator {
     type Target = TestAllocator;
 
-    fn deref(&self) -> &Self::Target { &self.0 }
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl Allocator for PanickyAllocator {
@@ -279,29 +297,40 @@ pub struct PanickyDrop<T>(T, bool);
 
 impl<T> PanickyDrop<T> {
     //  Creates a normal instance.
-    pub fn new(value: T) -> Self { Self(value, false) }
+    pub fn new(value: T) -> Self {
+        Self(value, false)
+    }
 
     //  Creates a panicky instance.
-    pub fn panicky(value: T) -> Self { Self(value, true) }
+    pub fn panicky(value: T) -> Self {
+        Self(value, true)
+    }
 }
 
 impl<T> Drop for PanickyDrop<T> {
-    fn drop(&mut self) { if self.1 { panic!("Oh No!") } }
+    fn drop(&mut self) {
+        if self.1 {
+            panic!("Oh No!")
+        }
+    }
 }
 
 impl<T> Key for PanickyDrop<T> {
     type Key = T;
 
-    fn key(&self) -> &Self::Key { &self.0 }
+    fn key(&self) -> &Self::Key {
+        &self.0
+    }
 }
 
 //  An Iterator which panics when reaching the configured count.
 pub struct PanickyIterator(u32, u32);
 
 impl PanickyIterator {
-    //  Creates an instance configured to panic after yielding `count`
-    //  elements.
-    pub fn new(count: u32) -> PanickyIterator { PanickyIterator(0, count) }
+    //  Creates an instance configured to panic after yielding `count` elements.
+    pub fn new(count: u32) -> PanickyIterator {
+        PanickyIterator(0, count)
+    }
 }
 
 impl iter::Iterator for PanickyIterator {

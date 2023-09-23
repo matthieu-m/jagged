@@ -1,22 +1,20 @@
 //! A simple blacklist example.
 //!
 //! In this example, there are two threads:
-//! -   A Producer thread will intermittently add new black-listed IDs to the
-//!     HashMap.
-//! -   A Consumer thread will "model" a continuous stream of messages coming
-//!     and for each check their sender against the black-list.
+//! -   A Producer thread will intermittently add new black-listed IDs to the HashMap.
+//! -   A Consumer thread will "model" a continuous stream of messages coming and for each check their sender against
+//!     the black-list.
 //!
 //! There could be more Consumer threads; for clarity there isn't.
 //!
-//! In a realistic implementation, the "time" deadline would be an Atomic, so
-//! that the publisher could update it.
+//! In a realistic implementation, the "time" deadline would be an Atomic, so that the publisher could update it.
 
 extern crate crossbeam_utils;
 extern crate jagged;
 
 use std::{thread, time};
 
-use jagged::hashmap::{HashMap, HashMapSnapshot, HashHooks};
+use jagged::hashmap::{HashHooks, HashMap, HashMapSnapshot};
 
 const NUMBER_ELEMENTS_PER_BATCH: usize = 10;
 const NUMBER_BATCHES: usize = 10;
@@ -29,12 +27,8 @@ fn is_blacklisted<H: HashHooks>(
     now: &time::Instant,
     id: &str,
     reader: &HashMapSnapshot<'_, String, time::Instant, H>,
-)
-    -> bool
-{
-    reader.get(id)
-        .map(|deadline| deadline >= now)
-        .unwrap_or(false)
+) -> bool {
+    reader.get(id).map(|deadline| deadline >= now).unwrap_or(false)
 }
 
 fn main() {
@@ -71,8 +65,11 @@ fn main() {
                 thread::sleep(PACE_TIME);
             }
 
-            println!("Consumer - {} messages black-listed from {:?}",
-                blacklisted, reader.snapshot());
+            println!(
+                "Consumer - {} messages black-listed from {:?}",
+                blacklisted,
+                reader.snapshot()
+            );
 
             assert!(blacklisted >= NUMBER_BATCHES * 2);
         });
@@ -96,5 +93,6 @@ fn main() {
 
             thread::sleep(PACE_TIME);
         }
-    }).unwrap();
+    })
+    .unwrap();
 }

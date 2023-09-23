@@ -22,5 +22,7 @@ impl<T: PartialEq> PartialEq for Entry<T> {
 impl<T> Key for Entry<T> {
     type Key = T;
 
-    fn key(&self) -> &T { &self.0 }
+    fn key(&self) -> &T {
+        &self.0
+    }
 }

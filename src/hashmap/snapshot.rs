@@ -1,38 +1,31 @@
 //! A Snapshot of the HashMap.
 //!
-//! The Snapshot is synchronization-free, and does not reflect updates to the
-//! referred HashMap.
+//! The Snapshot is synchronization-free, and does not reflect updates to the referred HashMap.
 
 use super::root::{borrow, fmt, hash, iter};
 
 use super::entry::Entry;
-use super::hashcore::HashHooks;
 use super::hashcore::buckets_api::BucketsSharedReader;
-use super::iterator::{KeyIterator, ValueIterator, KeyValueIterator};
+use super::hashcore::HashHooks;
+use super::iterator::{KeyIterator, KeyValueIterator, ValueIterator};
 
 /// `HashMapSnapshot`
 ///
-/// A `HashMapSnapshot` is a snapshot of the state of the underlying `HashMap` at
-/// the moment the instance is created.
+/// A `HashMapSnapshot` is a snapshot of the state of the underlying `HashMap` at the moment the instance is created.
 ///
-/// It never reflects further updates to the `HashMap` instance it was created
-/// from.
+/// It never reflects further updates to the `HashMap` instance it was created from.
 ///
 /// #   Iteration order
 ///
-/// All iterators over the elements of a `HashMapSnapshot` are subject to the
-/// same limitations:
+/// All iterators over the elements of a `HashMapSnapshot` are subject to the same limitations:
 ///
-/// -   The order in which elements are iterated on is not the order in which
-///     they were inserted.
-/// -   The order in which elements are iterated on is stable for one given
-///     instance of a `HashMap`.
-/// -   The order in which elements are iterated on is only stable across
-///     instances and runs of the program if the hash of elements is.
+/// -   The order in which elements are iterated on is not the order in which they were inserted.
+/// -   The order in which elements are iterated on is stable for one given instance of a `HashMap`.
+/// -   The order in which elements are iterated on is only stable across instances and runs of the program if the hash
+///     of elements is.
 ///
-/// As an implementation detail, elements are iterated on in clusters
-/// corresponding to the underlying buckets. Although unlikely to change, for
-/// performance reasons, it is best not to rely on such a property.
+/// As an implementation detail, elements are iterated on in clusters corresponding to the underlying buckets. Although
+/// unlikely to change, for performance reasons, it is best not to rely on such a property.
 pub struct HashMapSnapshot<'a, K, V, H> {
     reader: BucketsSharedReader<'a, Entry<K, V>, H>,
 }
@@ -62,7 +55,9 @@ impl<'a, K, V, H> HashMapSnapshot<'a, K, V, H> {
     /// let snapshot = map.snapshot();
     /// assert!(!snapshot.is_empty());
     /// ```
-    pub fn is_empty(&self) -> bool { self.reader.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.reader.is_empty()
+    }
 
     /// Returns the number of elements contained in the `HashMap` instance.
     ///
@@ -83,7 +78,9 @@ impl<'a, K, V, H> HashMapSnapshot<'a, K, V, H> {
     /// let snapshot = map.snapshot();
     /// assert_eq!(1, snapshot.len());
     /// ```
-    pub fn len(&self) -> usize { self.reader.len() }
+    pub fn len(&self) -> usize {
+        self.reader.len()
+    }
 
     /// Returns the maximum capacity achievable by the `HashMap` instance.
     ///
@@ -95,7 +92,9 @@ impl<'a, K, V, H> HashMapSnapshot<'a, K, V, H> {
     /// let snapshot = map.snapshot();
     /// assert_eq!(512 * 1024, snapshot.max_capacity());
     /// ```
-    pub fn max_capacity(&self) -> usize { self.reader.max_capacity() }
+    pub fn max_capacity(&self) -> usize {
+        self.reader.max_capacity()
+    }
 
     /// Returns the number of buckets currently used.
     ///
@@ -116,7 +115,9 @@ impl<'a, K, V, H> HashMapSnapshot<'a, K, V, H> {
     /// let snapshot = map.snapshot();
     /// assert_eq!(4, snapshot.number_buckets());
     /// ```
-    pub fn number_buckets(&self) -> usize { self.reader.number_buckets() }
+    pub fn number_buckets(&self) -> usize {
+        self.reader.number_buckets()
+    }
 
     /// Returns the maximum number of buckets.
     ///
@@ -128,7 +129,9 @@ impl<'a, K, V, H> HashMapSnapshot<'a, K, V, H> {
     /// let snapshot = map.snapshot();
     /// assert_eq!(20, snapshot.max_buckets());
     /// ```
-    pub fn max_buckets(&self) -> usize { self.reader.max_buckets() }
+    pub fn max_buckets(&self) -> usize {
+        self.reader.max_buckets()
+    }
 }
 
 impl<'a, K, V, H: HashHooks> HashMapSnapshot<'a, K, V, H> {
@@ -353,7 +356,9 @@ impl<'a, K, V, H> std::panic::UnwindSafe for HashMapSnapshot<'a, K, V, H> {}
 impl<'a, K, V, H> std::panic::RefUnwindSafe for HashMapSnapshot<'a, K, V, H> {}
 
 impl<'a, K, V, H> Clone for HashMapSnapshot<'a, K, V, H> {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<'a, K, V, H> Copy for HashMapSnapshot<'a, K, V, H> {}
@@ -369,7 +374,8 @@ where
     K: Eq + hash::Hash,
     V: Eq,
     H: hash::BuildHasher,
-{}
+{
+}
 
 impl<'a, K, V, H, OH> PartialEq<HashMapSnapshot<'a, K, V, OH>> for HashMapSnapshot<'a, K, V, H>
 where
@@ -403,94 +409,93 @@ impl<'a, 'b, K, V, H> iter::IntoIterator for &'b HashMapSnapshot<'a, K, V, H> {
 #[cfg(test)]
 mod tests {
 
-use hashmap::HashMap;
+    use hashmap::HashMap;
 
-#[test]
-fn trait_clone() {
-    #[derive(Eq, Hash, PartialEq)]
-    struct NotClonable(u8);
+    #[test]
+    fn trait_clone() {
+        #[derive(Eq, Hash, PartialEq)]
+        struct NotClonable(u8);
 
-    {
+        {
+            let map: HashMap<_, _> = HashMap::new();
+            map.insert(NotClonable(0), 2);
+
+            let snapshot = map.snapshot();
+            std::mem::drop(snapshot.clone());
+        }
+        {
+            let map: HashMap<_, _> = HashMap::new();
+            map.insert(2, NotClonable(0));
+
+            let snapshot = map.snapshot();
+            std::mem::drop(snapshot.clone());
+        }
+    }
+
+    #[test]
+    fn trait_copy() {
+        {
+            let map: HashMap<_, _> = HashMap::new();
+            map.insert("Hello, World".to_string(), 2);
+
+            let snapshot = map.snapshot();
+            let other = snapshot;
+            std::mem::drop(snapshot);
+            std::mem::drop(other);
+        }
+        {
+            let map: HashMap<_, _> = HashMap::new();
+            map.insert(2, "Hello, World".to_string());
+
+            let snapshot = map.snapshot();
+            let other = snapshot;
+            std::mem::drop(snapshot);
+            std::mem::drop(other);
+        }
+    }
+
+    #[test]
+    fn trait_debug() {
+        use std::fmt::Write;
+
         let map: HashMap<_, _> = HashMap::new();
-        map.insert(NotClonable(0), 2);
+        map.extend([(1, 1), (2, 2), (3, 3), (4, 4), (5, 5)].iter().copied());
 
-        let snapshot = map.snapshot();
-        std::mem::drop(snapshot.clone());
+        let mut sink = String::new();
+        let _ = write!(sink, "{:?}", map.snapshot());
+
+        println!("{}", sink);
+
+        assert!(sink.starts_with("HashMapSnapshot { capacity: 8, length: 5, buckets: [["));
+        assert!(sink.ends_with("]] }"));
     }
-    {
+
+    #[test]
+    fn trait_partial_eq() {
+        let left: HashMap<_, _> = HashMap::new();
+        left.insert(1, 2.0);
+
+        let right: HashMap<_, _> = HashMap::new();
+        right.insert(1, 2.0);
+
+        assert_eq!(left.snapshot(), right.snapshot());
+
+        left.insert(2, 3.0);
+
+        assert_ne!(left.snapshot(), right.snapshot());
+    }
+
+    #[test]
+    fn trait_into_iterator() {
         let map: HashMap<_, _> = HashMap::new();
-        map.insert(2, NotClonable(0));
+        map.insert(1, false);
 
-        let snapshot = map.snapshot();
-        std::mem::drop(snapshot.clone());
+        for kv in map.snapshot() {
+            assert_eq!((&1, &false), kv);
+        }
+
+        for kv in &map.snapshot() {
+            assert_eq!((&1, &false), kv);
+        }
     }
-}
-
-#[test]
-fn trait_copy() {
-    {
-        let map: HashMap<_, _> = HashMap::new();
-        map.insert("Hello, World".to_string(), 2);
-
-        let snapshot = map.snapshot();
-        let other = snapshot;
-        std::mem::drop(snapshot);
-        std::mem::drop(other);
-    }
-    {
-        let map: HashMap<_, _> = HashMap::new();
-        map.insert(2, "Hello, World".to_string());
-
-        let snapshot = map.snapshot();
-        let other = snapshot;
-        std::mem::drop(snapshot);
-        std::mem::drop(other);
-    }
-}
-
-#[test]
-fn trait_debug() {
-    use std::fmt::Write;
-
-    let map: HashMap<_, _> = HashMap::new();
-    map.extend([(1, 1), (2, 2), (3, 3), (4, 4), (5, 5)].iter().copied());
-
-    let mut sink = String::new();
-    let _ = write!(sink, "{:?}", map.snapshot());
-
-    println!("{}", sink);
-
-    assert!(sink.starts_with("HashMapSnapshot { capacity: 8, length: 5, buckets: [["));
-    assert!(sink.ends_with("]] }"));
-}
-
-#[test]
-fn trait_partial_eq() {
-    let left: HashMap<_, _> = HashMap::new();
-    left.insert(1, 2.0);
-
-    let right: HashMap<_, _> = HashMap::new();
-    right.insert(1, 2.0);
-
-    assert_eq!(left.snapshot(), right.snapshot());
-
-    left.insert(2, 3.0);
-
-    assert_ne!(left.snapshot(), right.snapshot());
-}
-
-#[test]
-fn trait_into_iterator() {
-    let map: HashMap<_, _> = HashMap::new();
-    map.insert(1, false);
-
-    for kv in map.snapshot() {
-        assert_eq!((&1, &false), kv);
-    }
-
-    for kv in &map.snapshot() {
-        assert_eq!((&1, &false), kv);
-    }
-}
-
 }

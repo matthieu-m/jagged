@@ -1,37 +1,30 @@
 //! A Snapshot of the HashSet.
 //!
-//! The Snapshot is synchronization-free, and does not reflect updates to the
-//! referred HashSet.
+//! The Snapshot is synchronization-free, and does not reflect updates to the referred HashSet.
 
 use super::root::{borrow, fmt, hash, iter};
 
 use super::entry::Entry;
-use super::hashcore::HashHooks;
 use super::hashcore::buckets_api::{BucketsSharedReader, ElementIterator};
+use super::hashcore::HashHooks;
 
 /// `HashSetSnapshot`
 ///
-/// A `HashSetSnapshot` is a snapshot of the state of the underlying `HashSet` at
-/// the moment the instance is created.
+/// A `HashSetSnapshot` is a snapshot of the state of the underlying `HashSet` at the moment the instance is created.
 ///
-/// It never reflects further updates to the `HashSet` instance it was created
-/// from.
+/// It never reflects further updates to the `HashSet` instance it was created from.
 ///
 /// #   Iteration order
 ///
-/// All iterators over the elements of a `HashSetSnapshot` are subject to the
-/// same limitations:
+/// All iterators over the elements of a `HashSetSnapshot` are subject to the same limitations:
 ///
-/// -   The order in which elements are iterated on is not the order in which
-///     they were inserted.
-/// -   The order in which elements are iterated on is stable for one given
-///     instance of a `HashSet`.
-/// -   The order in which elements are iterated on is only stable across
-///     instances and runs of the program if the hash of elements is.
+/// -   The order in which elements are iterated on is not the order in which they were inserted.
+/// -   The order in which elements are iterated on is stable for one given instance of a `HashSet`.
+/// -   The order in which elements are iterated on is only stable across instances and runs of the program if the hash
+///     of elements is.
 ///
-/// As an implementation detail, elements are iterated on in clusters
-/// corresponding to the underlying buckets. Although unlikely to change, for
-/// performance reasons, it is best not to rely on such a property.
+/// As an implementation detail, elements are iterated on in clusters corresponding to the underlying buckets. Although
+/// unlikely to change, for performance reasons, it is best not to rely on such a property.
 pub struct HashSetSnapshot<'a, T, H> {
     reader: BucketsSharedReader<'a, Entry<T>, H>,
 }
@@ -61,7 +54,9 @@ impl<'a, T, H> HashSetSnapshot<'a, T, H> {
     /// let snapshot = set.snapshot();
     /// assert!(!snapshot.is_empty());
     /// ```
-    pub fn is_empty(&self) -> bool { self.reader.is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.reader.is_empty()
+    }
 
     /// Returns the number of elements contained in the `HashSet` instance.
     ///
@@ -82,7 +77,9 @@ impl<'a, T, H> HashSetSnapshot<'a, T, H> {
     /// let snapshot = set.snapshot();
     /// assert_eq!(1, snapshot.len());
     /// ```
-    pub fn len(&self) -> usize { self.reader.len() }
+    pub fn len(&self) -> usize {
+        self.reader.len()
+    }
 
     /// Returns the maximum capacity achievable by the `HashSet` instance.
     ///
@@ -94,7 +91,9 @@ impl<'a, T, H> HashSetSnapshot<'a, T, H> {
     /// let snapshot = set.snapshot();
     /// assert_eq!(512 * 1024, snapshot.max_capacity());
     /// ```
-    pub fn max_capacity(&self) -> usize { self.reader.max_capacity() }
+    pub fn max_capacity(&self) -> usize {
+        self.reader.max_capacity()
+    }
 
     /// Returns the number of buckets currently used.
     ///
@@ -115,7 +114,9 @@ impl<'a, T, H> HashSetSnapshot<'a, T, H> {
     /// let snapshot = set.snapshot();
     /// assert_eq!(4, snapshot.number_buckets());
     /// ```
-    pub fn number_buckets(&self) -> usize { self.reader.number_buckets() }
+    pub fn number_buckets(&self) -> usize {
+        self.reader.number_buckets()
+    }
 
     /// Returns the maximum number of buckets.
     ///
@@ -127,10 +128,12 @@ impl<'a, T, H> HashSetSnapshot<'a, T, H> {
     /// let snapshot = set.snapshot();
     /// assert_eq!(20, snapshot.max_buckets());
     /// ```
-    pub fn max_buckets(&self) -> usize { self.reader.max_buckets() }
+    pub fn max_buckets(&self) -> usize {
+        self.reader.max_buckets()
+    }
 
-    /// Returns an iterator which yields the values representing the difference
-    /// with `other`, i.e., the values that in `self` but not in `other`.
+    /// Returns an iterator which yields the values representing the difference with `other`, i.e., the values that in
+    /// `self` but not in `other`.
     ///
     /// #   Example
     ///
@@ -147,8 +150,7 @@ impl<'a, T, H> HashSetSnapshot<'a, T, H> {
     ///
     /// assert_eq!(vec![&2], difference);
     /// ```
-    pub fn difference<OH>(&self, other: HashSetSnapshot<'a, T, OH>)
-        -> DifferenceIterator<'a, T, OH>
+    pub fn difference<OH>(&self, other: HashSetSnapshot<'a, T, OH>) -> DifferenceIterator<'a, T, OH>
     where
         T: Eq + hash::Hash,
         OH: HashHooks,
@@ -156,9 +158,8 @@ impl<'a, T, H> HashSetSnapshot<'a, T, H> {
         DifferenceIterator::create(self.into_iter(), other)
     }
 
-    /// Returns an iterator which yields the values representing the symmetric
-    /// difference with `other`, i.e., the values that are in `self` or in
-    /// `other` but not in both.
+    /// Returns an iterator which yields the values representing the symmetric difference with `other`, i.e., the values
+    /// that are in `self` or in `other` but not in both.
     ///
     /// #   Example
     ///
@@ -175,8 +176,10 @@ impl<'a, T, H> HashSetSnapshot<'a, T, H> {
     ///
     /// assert_eq!(vec![&2, &4], difference);
     /// ```
-    pub fn symmetric_difference<OH>(&self, other: HashSetSnapshot<'a, T, OH>)
-        -> SymmetricDifferenceIterator<'a, T, H, OH>
+    pub fn symmetric_difference<OH>(
+        &self,
+        other: HashSetSnapshot<'a, T, OH>,
+    ) -> SymmetricDifferenceIterator<'a, T, H, OH>
     where
         T: Eq + hash::Hash,
         H: HashHooks,
@@ -185,8 +188,8 @@ impl<'a, T, H> HashSetSnapshot<'a, T, H> {
         SymmetricDifferenceIterator::create(*self, other)
     }
 
-    /// Returns an iterator which yields the values representing the intersection
-    /// with `other`, i.e., the values that in `self` and in `other`.
+    /// Returns an iterator which yields the values representing the intersection with `other`, i.e., the values that in
+    /// `self` and in `other`.
     ///
     /// #   Example
     ///
@@ -203,8 +206,7 @@ impl<'a, T, H> HashSetSnapshot<'a, T, H> {
     ///
     /// assert_eq!(vec![&1, &3], intersection);
     /// ```
-    pub fn intersection<OH>(&self, other: HashSetSnapshot<'a, T, OH>)
-        -> IntersectionIterator<'a, T, OH>
+    pub fn intersection<OH>(&self, other: HashSetSnapshot<'a, T, OH>) -> IntersectionIterator<'a, T, OH>
     where
         T: Eq + hash::Hash,
         OH: HashHooks,
@@ -212,9 +214,8 @@ impl<'a, T, H> HashSetSnapshot<'a, T, H> {
         IntersectionIterator::create(self.into_iter(), other)
     }
 
-    /// Returns an iterator which yields the values representing the union
-    /// with `other`, i.e., the values that in `self` or in `other`, without
-    /// duplicates.
+    /// Returns an iterator which yields the values representing the union with `other`, i.e., the values that in `self`
+    /// or in `other`, without duplicates.
     ///
     /// #   Example
     ///
@@ -231,8 +232,7 @@ impl<'a, T, H> HashSetSnapshot<'a, T, H> {
     ///
     /// assert_eq!(vec![&1, &2, &3, &4], union);
     /// ```
-    pub fn union<OH>(&self, other: HashSetSnapshot<'a, T, OH>)
-        -> UnionIterator<'a, T, H>
+    pub fn union<OH>(&self, other: HashSetSnapshot<'a, T, OH>) -> UnionIterator<'a, T, H>
     where
         T: Eq + hash::Hash,
         H: HashHooks,
@@ -298,8 +298,7 @@ impl<'a, T, H: HashHooks> HashSetSnapshot<'a, T, H> {
         self.reader.get(value).map(|e| &e.0)
     }
 
-    /// Returns `true` if `self` is disjoint from `other`, i.e., their
-    /// intersection is empty.
+    /// Returns `true` if `self` is disjoint from `other`, i.e., their intersection is empty.
     ///
     /// #   Example
     ///
@@ -390,8 +389,7 @@ impl<'a, T, H: HashHooks> HashSetSnapshot<'a, T, H> {
     }
 }
 
-/// A `HashSetSnapshot<T>` can be `Send` across threads whenever a
-/// `&[T]` can.
+/// A `HashSetSnapshot<T>` can be `Send` across threads whenever a `&[T]` can.
 ///
 /// #   Example of Send.
 ///
@@ -463,7 +461,9 @@ impl<'a, T, H> std::panic::UnwindSafe for HashSetSnapshot<'a, T, H> {}
 impl<'a, T, H> std::panic::RefUnwindSafe for HashSetSnapshot<'a, T, H> {}
 
 impl<'a, T, H> Clone for HashSetSnapshot<'a, T, H> {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<'a, T, H> Copy for HashSetSnapshot<'a, T, H> {}
@@ -478,7 +478,8 @@ impl<'a, T, H> Eq for HashSetSnapshot<'a, T, H>
 where
     T: Eq + hash::Hash,
     H: hash::BuildHasher,
-{}
+{
+}
 
 impl<'a, T, H, OH> PartialEq<HashSetSnapshot<'a, T, OH>> for HashSetSnapshot<'a, T, H>
 where
@@ -518,7 +519,9 @@ impl<'a, T> ValueIterator<'a, T> {
 }
 
 impl<'a, T> Clone for ValueIterator<'a, T> {
-    fn clone(&self) -> Self { Self(self.0.clone()) }
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
 }
 
 impl<'a, T> iter::Iterator for ValueIterator<'a, T> {
@@ -529,20 +532,14 @@ impl<'a, T> iter::Iterator for ValueIterator<'a, T> {
     }
 }
 
-/// An iterator returning the elements in the left-hand side set that are not
-/// also present in the right-hand side.
+/// An iterator returning the elements in the left-hand side set that are not also present in the right-hand side.
 pub struct DifferenceIterator<'a, T, H> {
     left: ValueIterator<'a, T>,
     right: HashSetSnapshot<'a, T, H>,
 }
 
 impl<'a, T, H> DifferenceIterator<'a, T, H> {
-    fn create(
-        left: ValueIterator<'a, T>,
-        right: HashSetSnapshot<'a, T, H>,
-    )
-        -> Self
-    {
+    fn create(left: ValueIterator<'a, T>, right: HashSetSnapshot<'a, T, H>) -> Self {
         DifferenceIterator { left, right }
     }
 }
@@ -573,8 +570,7 @@ where
     }
 }
 
-/// An iterator returing the elements that are either in the left-hand side or
-/// the right-hand side, but not in both.
+/// An iterator returing the elements that are either in the left-hand side or the right-hand side, but not in both.
 pub struct SymmetricDifferenceIterator<'a, T, H, OH> {
     chain: iter::Chain<DifferenceIterator<'a, T, OH>, DifferenceIterator<'a, T, H>>,
 }
@@ -585,21 +581,18 @@ where
     H: HashHooks,
     OH: HashHooks,
 {
-    fn create(
-        left: HashSetSnapshot<'a, T, H>,
-        right: HashSetSnapshot<'a, T, OH>,
-    )
-        -> Self
-    {
+    fn create(left: HashSetSnapshot<'a, T, H>, right: HashSetSnapshot<'a, T, OH>) -> Self {
         SymmetricDifferenceIterator {
-            chain: left.difference(right).chain(right.difference(left))
+            chain: left.difference(right).chain(right.difference(left)),
         }
     }
 }
 
 impl<'a, T, H, OH> Clone for SymmetricDifferenceIterator<'a, T, H, OH> {
     fn clone(&self) -> Self {
-        SymmetricDifferenceIterator { chain: self.chain.clone() }
+        SymmetricDifferenceIterator {
+            chain: self.chain.clone(),
+        }
     }
 }
 
@@ -616,20 +609,14 @@ where
     }
 }
 
-/// An iterator returning the elements in the left-hand side set that are also
-/// present in the right-hand side.
+/// An iterator returning the elements in the left-hand side set that are also present in the right-hand side.
 pub struct IntersectionIterator<'a, T, H> {
     left: ValueIterator<'a, T>,
     right: HashSetSnapshot<'a, T, H>,
 }
 
 impl<'a, T, H> IntersectionIterator<'a, T, H> {
-    fn create(
-        left: ValueIterator<'a, T>,
-        right: HashSetSnapshot<'a, T, H>,
-    )
-        -> Self
-    {
+    fn create(left: ValueIterator<'a, T>, right: HashSetSnapshot<'a, T, H>) -> Self {
         IntersectionIterator { left, right }
     }
 }
@@ -660,8 +647,7 @@ where
     }
 }
 
-/// An iterator returing the elements that are either in the left-hand side or
-/// the right-hand side, without duplicates.
+/// An iterator returing the elements that are either in the left-hand side or the right-hand side, without duplicates.
 pub struct UnionIterator<'a, T, H> {
     chain: iter::Chain<ValueIterator<'a, T>, DifferenceIterator<'a, T, H>>,
 }
@@ -671,21 +657,18 @@ where
     T: Eq + hash::Hash,
     H: HashHooks,
 {
-    fn create(
-        left: HashSetSnapshot<'a, T, H>,
-        right: ValueIterator<'a, T>,
-    )
-        -> Self
-    {
+    fn create(left: HashSetSnapshot<'a, T, H>, right: ValueIterator<'a, T>) -> Self {
         UnionIterator {
-            chain: left.into_iter().chain(DifferenceIterator::create(right, left))
+            chain: left.into_iter().chain(DifferenceIterator::create(right, left)),
         }
     }
 }
 
 impl<'a, T, H> Clone for UnionIterator<'a, T, H> {
     fn clone(&self) -> Self {
-        UnionIterator { chain: self.chain.clone() }
+        UnionIterator {
+            chain: self.chain.clone(),
+        }
     }
 }
 
@@ -704,74 +687,73 @@ where
 #[cfg(test)]
 mod tests {
 
-use hashset::HashSet;
+    use hashset::HashSet;
 
-#[test]
-fn trait_clone() {
-    #[derive(Eq, Hash, PartialEq)]
-    struct NotClonable(u8);
+    #[test]
+    fn trait_clone() {
+        #[derive(Eq, Hash, PartialEq)]
+        struct NotClonable(u8);
 
-    let set: HashSet<_> = HashSet::new();
-    set.insert(NotClonable(0));
+        let set: HashSet<_> = HashSet::new();
+        set.insert(NotClonable(0));
 
-    let snapshot = set.snapshot();
-    std::mem::drop(snapshot.clone());
-}
-
-#[test]
-fn trait_copy() {
-    let set: HashSet<_> = HashSet::new();
-    set.insert("Hello, World".to_string());
-
-    let snapshot = set.snapshot();
-    let other = snapshot;
-    std::mem::drop(snapshot);
-    std::mem::drop(other);
-}
-
-#[test]
-fn trait_debug() {
-    use std::fmt::Write;
-
-    let set: HashSet<_> = HashSet::new();
-    set.extend([1, 2, 3, 4, 5].iter().copied());
-
-    let mut sink = String::new();
-    let _ = write!(sink, "{:?}", set.snapshot());
-
-    println!("{}", sink);
-
-    assert!(sink.starts_with("HashSetSnapshot { capacity: 8, length: 5, buckets: [["));
-    assert!(sink.ends_with("]] }"));
-}
-
-#[test]
-fn trait_partial_eq() {
-    let left: HashSet<_> = HashSet::new();
-    left.insert(1);
-
-    let right: HashSet<_> = HashSet::new();
-    right.insert(1);
-
-    assert_eq!(left.snapshot(), right.snapshot());
-
-    left.insert(2);
-
-    assert_ne!(left.snapshot(), right.snapshot());
-}
-
-#[test]
-fn trait_into_iterator() {
-    let set: HashSet<_> = HashSet::new();
-    set.insert(1);
-
-    for e in set.snapshot() {
-        assert_eq!(&1, e);
+        let snapshot = set.snapshot();
+        std::mem::drop(snapshot.clone());
     }
 
-    for e in &set.snapshot() {
-        assert_eq!(&1, e);
-    }
-}
+    #[test]
+    fn trait_copy() {
+        let set: HashSet<_> = HashSet::new();
+        set.insert("Hello, World".to_string());
 
+        let snapshot = set.snapshot();
+        let other = snapshot;
+        std::mem::drop(snapshot);
+        std::mem::drop(other);
+    }
+
+    #[test]
+    fn trait_debug() {
+        use std::fmt::Write;
+
+        let set: HashSet<_> = HashSet::new();
+        set.extend([1, 2, 3, 4, 5].iter().copied());
+
+        let mut sink = String::new();
+        let _ = write!(sink, "{:?}", set.snapshot());
+
+        println!("{}", sink);
+
+        assert!(sink.starts_with("HashSetSnapshot { capacity: 8, length: 5, buckets: [["));
+        assert!(sink.ends_with("]] }"));
+    }
+
+    #[test]
+    fn trait_partial_eq() {
+        let left: HashSet<_> = HashSet::new();
+        left.insert(1);
+
+        let right: HashSet<_> = HashSet::new();
+        right.insert(1);
+
+        assert_eq!(left.snapshot(), right.snapshot());
+
+        left.insert(2);
+
+        assert_ne!(left.snapshot(), right.snapshot());
+    }
+
+    #[test]
+    fn trait_into_iterator() {
+        let set: HashSet<_> = HashSet::new();
+        set.insert(1);
+
+        for e in set.snapshot() {
+            assert_eq!(&1, e);
+        }
+
+        for e in &set.snapshot() {
+            assert_eq!(&1, e);
+        }
+    }
 }

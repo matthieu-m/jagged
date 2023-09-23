@@ -9,14 +9,13 @@ use super::HashSetSnapshot;
 
 use super::atomic::AcqRelUsize;
 use super::entry::Entry;
-use super::hashcore::HashHooks;
 use super::hashcore::buckets_api::{BucketArray, BucketsSharedReader};
 use super::hashcore::capacity::{Capacity, Size};
+use super::hashcore::HashHooks;
 
 /// `HashSetReader`
 ///
-/// A `HashSetReader` is an up-to-date read-only view of the `HashSet` it was
-/// created from.
+/// A `HashSetReader` is an up-to-date read-only view of the `HashSet` it was created from.
 ///
 /// It always reflects updates to the underlying instance.
 pub struct HashSetReader<'a, T, H> {
@@ -33,17 +32,19 @@ impl<'a, T, H> HashSetReader<'a, T, H> {
         hooks: &'a H,
         size: &'a AcqRelUsize,
         capacity: Capacity,
-    )
-        -> Self
-    {
-        Self { buckets, hooks, size, capacity }
+    ) -> Self {
+        Self {
+            buckets,
+            hooks,
+            size,
+            capacity,
+        }
     }
 
     /// Creates a `HashSetSnapshot`.
     ///
-    /// A `HashSetSnapshot` is a read-only view of the `HashSetReader` instance it
-    /// is created from which it does not reflect updates. Once created, it is
-    /// immutable.
+    /// A `HashSetSnapshot` is a read-only view of the `HashSetReader` instance it is created from which it does not
+    /// reflect updates. Once created, it is immutable.
     ///
     /// #   Example
     ///
@@ -75,7 +76,9 @@ impl<'a, T, H> HashSetReader<'a, T, H> {
     /// set.insert(1);
     /// assert!(!reader.is_empty());
     /// ```
-    pub fn is_empty(&self) -> bool { self.shared_reader().is_empty() }
+    pub fn is_empty(&self) -> bool {
+        self.shared_reader().is_empty()
+    }
 
     /// Returns the number of elements contained in the `HashSet` instance.
     ///
@@ -90,7 +93,9 @@ impl<'a, T, H> HashSetReader<'a, T, H> {
     /// set.insert(1);
     /// assert_eq!(1, reader.len());
     /// ```
-    pub fn len(&self) -> usize { self.shared_reader().len() }
+    pub fn len(&self) -> usize {
+        self.shared_reader().len()
+    }
 
     /// Returns the maximum capacity achievable by the `HashSet` instance.
     ///
@@ -102,7 +107,9 @@ impl<'a, T, H> HashSetReader<'a, T, H> {
     /// let reader = set.reader();
     /// assert_eq!(512 * 1024, reader.max_capacity());
     /// ```
-    pub fn max_capacity(&self) -> usize { self.shared_reader().max_capacity() }
+    pub fn max_capacity(&self) -> usize {
+        self.shared_reader().max_capacity()
+    }
 
     /// Returns the number of buckets currently used by the `HashSet` instance.
     ///
@@ -131,16 +138,16 @@ impl<'a, T, H> HashSetReader<'a, T, H> {
     /// let reader = set.reader();
     /// assert_eq!(20, reader.max_buckets());
     /// ```
-    pub fn max_buckets(&self) -> usize { self.shared_reader().max_buckets() }
+    pub fn max_buckets(&self) -> usize {
+        self.shared_reader().max_buckets()
+    }
 
     //  Returns a SharedReader.
     fn shared_reader(&self) -> BucketsSharedReader<'a, Entry<T>, H> {
         let size = Size(self.size.load());
         //  Safety:
         //  -   `size` is less than the size of the hashmap.
-        unsafe {
-            BucketsSharedReader::new(self.buckets, self.hooks, size, self.capacity)
-        }
+        unsafe { BucketsSharedReader::new(self.buckets, self.hooks, size, self.capacity) }
     }
 }
 
@@ -192,8 +199,7 @@ impl<'a, T, H: HashHooks> HashSetReader<'a, T, H> {
     }
 }
 
-/// A `HashSetReader<T>` can be `Send` across threads whenever a
-/// `&[T]` can.
+/// A `HashSetReader<T>` can be `Send` across threads whenever a `&[T]` can.
 ///
 /// #   Example of Send.
 ///
@@ -265,7 +271,9 @@ impl<'a, T, H> std::panic::UnwindSafe for HashSetReader<'a, T, H> {}
 impl<'a, T, H> std::panic::RefUnwindSafe for HashSetReader<'a, T, H> {}
 
 impl<'a, T, H> Clone for HashSetReader<'a, T, H> {
-    fn clone(&self) -> Self { *self }
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<'a, T, H> Copy for HashSetReader<'a, T, H> {}
@@ -276,49 +284,47 @@ impl<'a, T: fmt::Debug, H> fmt::Debug for HashSetReader<'a, T, H> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
 
-use hashset::HashSet;
+    use hashset::HashSet;
 
-#[test]
-fn trait_clone() {
-    #[derive(Eq, Hash, PartialEq)]
-    struct NotClonable(u8);
+    #[test]
+    fn trait_clone() {
+        #[derive(Eq, Hash, PartialEq)]
+        struct NotClonable(u8);
 
-    let set: HashSet<_> = HashSet::new();
-    set.insert(NotClonable(0));
+        let set: HashSet<_> = HashSet::new();
+        set.insert(NotClonable(0));
 
-    let reader = set.reader();
-    std::mem::drop(reader.clone());
-}
+        let reader = set.reader();
+        std::mem::drop(reader.clone());
+    }
 
-#[test]
-fn trait_copy() {
-    let set: HashSet<_> = HashSet::new();
-    set.insert("Hello, World".to_string());
+    #[test]
+    fn trait_copy() {
+        let set: HashSet<_> = HashSet::new();
+        set.insert("Hello, World".to_string());
 
-    let reader = set.reader();
-    let other = reader;
-    std::mem::drop(reader);
-    std::mem::drop(other);
-}
+        let reader = set.reader();
+        let other = reader;
+        std::mem::drop(reader);
+        std::mem::drop(other);
+    }
 
-#[test]
-fn trait_debug() {
-    use std::fmt::Write;
+    #[test]
+    fn trait_debug() {
+        use std::fmt::Write;
 
-    let set: HashSet<_> = HashSet::new();
-    set.extend([1, 2, 3, 4, 5].iter().copied());
+        let set: HashSet<_> = HashSet::new();
+        set.extend([1, 2, 3, 4, 5].iter().copied());
 
-    let mut sink = String::new();
-    let _ = write!(sink, "{:?}", set.reader());
+        let mut sink = String::new();
+        let _ = write!(sink, "{:?}", set.reader());
 
-    println!("{}", sink);
+        println!("{}", sink);
 
-    assert!(sink.starts_with("HashSetReader { capacity: 8, length: 5, buckets: [["));
-    assert!(sink.ends_with("]] }"));
-}
-
+        assert!(sink.starts_with("HashSetReader { capacity: 8, length: 5, buckets: [["));
+        assert!(sink.ends_with("]] }"));
+    }
 }
