@@ -158,15 +158,16 @@ impl<T> BucketArray<T> {
         Q: ?Sized + Eq + hash::Hash,
         H: hash::BuildHasher,
     {
-        if let Some(e) = self.get(key, size, capacity, hook) {
-            let e: &T = e;
-            let ptr: *mut T = e as *const _ as *mut _;
+        let hash = Self::hash(key, hook);
+
+        let entry = self.entry(key, hash, size, capacity);
+
+        entry
+            .and_then(|e| e.occupied())
             //  Safety:
-            //  -   Exclusive access, due to `&mut self`.
-            Some(&mut *ptr)
-        } else {
-            None
-        }
+            //  -   The element is initialized, since the entry is occupied.
+            //  -   The caller has exclusive access since `&mut self`.
+            .map(|e| e.get_unchecked_mut())
     }
 
     //  Inserts the element.

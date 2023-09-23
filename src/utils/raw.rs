@@ -26,13 +26,25 @@ impl<T> Raw<T> {
         &*self.as_ptr()
     }
 
-    //  Gets a reference to the value.
+    //  Gets a mutable reference to the value.
     //
     //  #   Safety
     //
     //  -   Assumes that the value is initialized.
     pub unsafe fn get_mut(&mut self) -> &mut T {
         &mut *self.as_mut_ptr()
+    }
+
+    //  Gets an exclusive reference to the value from a shared reference.
+    //
+    //  #   Safety
+    //
+    //  -   Assumes that the value is initialized.
+    //  -   Assumes that the caller has exclusive access.
+    pub unsafe fn get_unchecked_mut(&self) -> &mut T {
+        //  Safety:
+        //  -   The caller has exclusive access, per pre-condition.
+        unsafe { &mut *self.as_unchecked_mut_ptr() }
     }
 
     //  Gets a pointer to the value.
@@ -47,6 +59,21 @@ impl<T> Raw<T> {
     //  The value may not be initialized.
     pub fn as_mut_ptr(&mut self) -> *mut T {
         self.maybe_mut().as_mut_ptr()
+    }
+
+    //  Gets a mutable pointer to the value from a shared reference.
+    //
+    //  The value may not be initialized.
+    //
+    //  #   Safety
+    //
+    //  -   Assumes that the caller has exclusive access.
+    pub unsafe fn as_unchecked_mut_ptr(&self) -> *mut T {
+        #![deny(unsafe_op_in_unsafe_fn)]
+
+        //  Safety:
+        //  -   The caller has exclusive access, per pre-condition.
+        unsafe { self.maybe_unchecked_mut().as_mut_ptr() }
     }
 
     //  Initializes the value.
@@ -80,6 +107,19 @@ impl<T> Raw<T> {
     fn maybe_mut(&mut self) -> &mut mem::MaybeUninit<T> {
         //  Safety:
         //  -   Exclusive access, per &mut self.
+        unsafe { &mut *self.0.get() }
+    }
+
+    //  Gets a mutable to the MaybeUninit field.
+    //
+    //  #   Safety
+    //
+    //  -   Assumes that the caller has exclusive access.
+    unsafe fn maybe_unchecked_mut(&self) -> &mut mem::MaybeUninit<T> {
+        #![deny(unsafe_op_in_unsafe_fn)]
+
+        //  Safety:
+        //  -   Exclusive access, per pre-condition.
         unsafe { &mut *self.0.get() }
     }
 }

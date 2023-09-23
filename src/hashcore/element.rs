@@ -43,7 +43,7 @@ impl<T> Element<T> {
         }
     }
 
-    //  Gets the element.
+    //  Gets a reference to the element.
     //
     //  #   Safety
     //
@@ -54,6 +54,21 @@ impl<T> Element<T> {
         //  -   Raw is initialized as `self.generation` is not UNINTIALIZED.
         //  -   Raw is finalized.
         self.raw.get()
+    }
+
+    //  Gets a mutable reference the element.
+    //
+    //  #   Safety
+    //
+    //  -   Assumes the element is initialized.
+    //  -   Assumes the caller has exclusive access to the area.
+    pub unsafe fn get_unchecked_mut(&self) -> &mut T {
+        debug_assert!(self.is_initialized());
+        //  Safety:
+        //  -   Raw is initialized as `self.generation` is not UNINTIALIZED.
+        //  -   Raw is finalized.
+        //  -   The caller has exclusive access.
+        self.raw.get_unchecked_mut()
     }
 
     //  Stores the element, with its generation.

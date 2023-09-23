@@ -535,11 +535,11 @@ impl<T> Bucket<T> {
     //
     //  -   Assumes that the first length elements are initialized.
     unsafe fn get_initialized_slice_mut(&mut self, length: BucketLength) -> &mut [T] {
-        let ptr = self.0.get();
+        let ptr: *mut Raw<T> = self.0.get();
 
         //  Safety:
         //  -   Exclusive access to `raw` is guaranteed by `&mut self`.
-        let raw = &mut *ptr;
+        let raw: &mut Raw<T> = &mut *ptr;
 
         //  Safety:
         //  -   The first length elements are assumed to be initialized.
