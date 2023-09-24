@@ -62,6 +62,7 @@ impl<T> Element<T> {
     //
     //  -   Assumes the element is initialized.
     //  -   Assumes the caller has exclusive access to the area.
+    #[allow(clippy::mut_from_ref)]
     pub unsafe fn get_unchecked_mut(&self) -> &mut T {
         debug_assert!(self.is_initialized());
         //  Safety:

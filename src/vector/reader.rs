@@ -7,7 +7,7 @@ use super::root::{fmt, ops};
 use super::VectorSnapshot;
 
 use super::atomic::AcqRelUsize;
-use super::buckets_api::{BucketArray, BucketsSharedReader};
+use super::buckets_api::{BucketSlice, BucketsSharedReader};
 use super::capacity::{BucketIndex, Capacity, ElementIndex, Length};
 
 /// `VectorReader`
@@ -19,12 +19,12 @@ pub struct VectorReader<'a, T> {
     //  Capacity of the first bucket.
     capacity: Capacity,
     length: &'a AcqRelUsize,
-    buckets: &'a BucketArray<T>,
+    buckets: BucketSlice<'a, T>,
 }
 
 impl<'a, T> VectorReader<'a, T> {
     //  Creates a new instance.
-    pub(crate) fn new(capacity: Capacity, length: &'a AcqRelUsize, buckets: &'a BucketArray<T>) -> Self {
+    pub(crate) fn new(capacity: Capacity, length: &'a AcqRelUsize, buckets: BucketSlice<'a, T>) -> Self {
         Self {
             capacity,
             length,

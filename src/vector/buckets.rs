@@ -1,6 +1,6 @@
 //! The core Buckets of the vector.
 
-use super::root::{cell, cmp, marker, mem, ptr, slice};
+use super::root::{array, cell, cmp, marker, mem, ptr, slice};
 
 use super::allocator::{Allocator, Layout};
 use super::capacity::{
@@ -10,55 +10,20 @@ use super::failure::{Failure, Result};
 use super::raw::Raw;
 
 //  Tailored just so the default Vector takes exactly 3 cache lines.
-pub const MAX_BUCKETS: usize = 22;
+pub const DEFAULT_BUCKETS: usize = 22;
 
 //  The storage.
-pub struct BucketArray<T>([Bucket<T>; MAX_BUCKETS]);
+pub struct BucketArray<T, const N: usize = DEFAULT_BUCKETS>([Bucket<T>; N]);
 
-impl<T> BucketArray<T> {
+impl<T, const N: usize> BucketArray<T, N> {
     //  Returns the capacity for the Vector.
     pub fn capacity(capacity: usize) -> Capacity {
-        Capacity::new(capacity, MAX_BUCKETS)
+        Capacity::new(capacity, N)
     }
 
-    //  Returns the number of buckets currently allocated.
-    pub fn number_buckets(&self) -> NumberBuckets {
-        let result = self
-            .0
-            .iter()
-            .position(|bucket| !bucket.is_allocated())
-            .unwrap_or(MAX_BUCKETS);
-        NumberBuckets(result)
-    }
-
-    //  Returns a reference to the ith element, if any.
-    //
-    //  #   Safety
-    //
-    //  -   Assumes than length is less than the current length of the vector.
-    pub unsafe fn get(&self, index: ElementIndex, length: Length, capacity: Capacity) -> Option<&T> {
-        if index.0 >= length.0 {
-            None
-        } else {
-            Some(self.get_unchecked(index, capacity))
-        }
-    }
-
-    //  Returns a reference to the ith element.
-    //
-    //  #   Safety
-    //
-    //  -   Assumes than index is less than the current length of the vector.
-    pub unsafe fn get_unchecked(&self, index: ElementIndex, capacity: Capacity) -> &T {
-        let (bucket, inner) = capacity.indexes(index);
-
-        //  Safety:
-        //  -   bucket is within bounds.
-        let bucket = self.0.get_unchecked(bucket.0);
-
-        //  Safety:
-        //  -   inner is within bounds.
-        bucket.get_unchecked(inner)
+    //  Returns a slice.
+    pub fn as_slice(&self) -> BucketSlice<'_, T> {
+        BucketSlice(&self.0)
     }
 
     //  Returns a reference to the ith element, if any.
@@ -109,7 +74,7 @@ impl<T> BucketArray<T> {
             let bucket = self.0.get_unchecked_mut(index);
             let index = BucketIndex(index);
 
-            let length = Self::bucket_properties(index, length, capacity).0;
+            let length = bucket_properties(index, length, capacity).0;
             total += length.0;
 
             //  Safety:
@@ -118,6 +83,94 @@ impl<T> BucketArray<T> {
         }
 
         debug_assert!(length.0 == total);
+    }
+
+    //  Returns a slice comprising the initialized part of the Bucket.
+    //
+    //  #   Safety
+    //
+    //  -   Assumes that `bucket` is within bounds.
+    //  -   Assumes that `length` is less than the current length of the vector.
+    //  -   Assumes that `capacity` matches the capacity of the vector.
+    pub unsafe fn initialized_bucket_mut(
+        &mut self,
+        bucket: BucketIndex,
+        length: Length,
+        capacity: Capacity,
+    ) -> &mut [T] {
+        debug_assert!(bucket.0 < capacity.max_buckets().0);
+
+        let bucket_length = capacity.len_bucket(bucket, length);
+
+        //  Safety:
+        //  -   The index is guaranteed to be within bounds.
+        let bucket = self.0.get_unchecked_mut(bucket.0);
+
+        //  Safety:
+        //  -   The first `bucket_length` elements are initialized, due to
+        //      `length` being less than the length of the vector, and
+        //      `capacity` matching that of the vector.
+        bucket.get_initialized_slice_mut(bucket_length)
+    }
+}
+
+impl<T, const N: usize> Default for BucketArray<T, N> {
+    fn default() -> Self {
+        if mem::size_of::<T>() == 0 {
+            panic_zero_sized_element();
+        }
+
+        Self(array::from_fn(|_| Bucket::default()))
+    }
+}
+
+//  The reference to the storage, max-capacity agnostic.
+pub struct BucketSlice<'a, T>(&'a [Bucket<T>]);
+
+impl<'a, T> BucketSlice<'a, T> {
+    //  Returns the number of buckets currently allocated.
+    pub fn number_buckets(&self) -> NumberBuckets {
+        let result = self
+            .0
+            .iter()
+            .position(|bucket| !bucket.is_allocated())
+            .unwrap_or(self.0.len());
+        NumberBuckets(result)
+    }
+
+    /// Returns whether `other` is the same slice.
+    pub fn is_ptr_eq(&self, other: Self) -> bool {
+        ptr::eq(self.0.as_ptr(), other.0.as_ptr())
+    }
+
+    //  Returns a reference to the ith element, if any.
+    //
+    //  #   Safety
+    //
+    //  -   Assumes than length is less than the current length of the vector.
+    pub unsafe fn get(&self, index: ElementIndex, length: Length, capacity: Capacity) -> Option<&'a T> {
+        if index.0 >= length.0 {
+            None
+        } else {
+            Some(self.get_unchecked(index, capacity))
+        }
+    }
+
+    //  Returns a reference to the ith element.
+    //
+    //  #   Safety
+    //
+    //  -   Assumes than index is less than the current length of the vector.
+    pub unsafe fn get_unchecked(&self, index: ElementIndex, capacity: Capacity) -> &'a T {
+        let (bucket, inner) = capacity.indexes(index);
+
+        //  Safety:
+        //  -   bucket is within bounds.
+        let bucket = self.0.get_unchecked(bucket.0);
+
+        //  Safety:
+        //  -   inner is within bounds.
+        bucket.get_unchecked(inner)
     }
 
     //  Shrinks the buckets, releasing unused memory.
@@ -209,14 +262,16 @@ impl<T> BucketArray<T> {
         //  Safety:
         //  -   index is within bounds.
         //  -   length is assumed to match the current length of the vector.
-        let bucket = self.uninitialized_bucket_mut(index, length, capacity);
+        let bucket = self.uninitialized_bucket(index, length, capacity);
         debug_assert!(!bucket.is_empty());
 
         //  Safety:
         //  -   bucket is not empty.
-        let raw = bucket.get_unchecked_mut(0);
+        let raw = bucket.get_unchecked(0);
 
-        raw.write(value);
+        //  Safety:
+        //  -   Exclusive access for the duration of the call, per pre-condition of a single writer thread.
+        unsafe { raw.write(value) };
 
         Ok(Length(length.0 + 1))
     }
@@ -270,7 +325,7 @@ impl<T> BucketArray<T> {
     //  -   Assumes that `bucket` is within bounds.
     //  -   Assumes that `length` is less than the current length of the vector.
     //  -   Assumes that `capacity` matches the capacity of the vector.
-    pub unsafe fn initialized_bucket(&self, bucket: BucketIndex, length: Length, capacity: Capacity) -> &[T] {
+    pub unsafe fn initialized_bucket(&self, bucket: BucketIndex, length: Length, capacity: Capacity) -> &'a [T] {
         debug_assert!(bucket.0 < capacity.max_buckets().0);
 
         let bucket_length = capacity.len_bucket(bucket, length);
@@ -286,34 +341,6 @@ impl<T> BucketArray<T> {
         bucket.get_initialized_slice(bucket_length)
     }
 
-    //  Returns a slice comprising the initialized part of the Bucket.
-    //
-    //  #   Safety
-    //
-    //  -   Assumes that `bucket` is within bounds.
-    //  -   Assumes that `length` is less than the current length of the vector.
-    //  -   Assumes that `capacity` matches the capacity of the vector.
-    pub unsafe fn initialized_bucket_mut(
-        &mut self,
-        bucket: BucketIndex,
-        length: Length,
-        capacity: Capacity,
-    ) -> &mut [T] {
-        debug_assert!(bucket.0 < capacity.max_buckets().0);
-
-        let bucket_length = capacity.len_bucket(bucket, length);
-
-        //  Safety:
-        //  -   The index is guaranteed to be within bounds.
-        let bucket = self.0.get_unchecked_mut(bucket.0);
-
-        //  Safety:
-        //  -   The first `bucket_length` elements are initialized, due to
-        //      `length` being less than the length of the vector, and
-        //      `capacity` matching that of the vector.
-        bucket.get_initialized_slice_mut(bucket_length)
-    }
-
     //  Returns a slice comprising the uninitialized part of Bucket.
     //
     //  #   Safety
@@ -321,16 +348,10 @@ impl<T> BucketArray<T> {
     //  -   Assumes that `bucket` is within bounds.
     //  -   Assumes that `length` is exactly the current length of the vector.
     //  -   Assumes that `capacity` matches the capacity of the vector.
-    #[allow(clippy::mut_from_ref)]
-    unsafe fn uninitialized_bucket_mut(
-        &self,
-        bucket: BucketIndex,
-        length: Length,
-        capacity: Capacity,
-    ) -> &mut [Raw<T>] {
+    unsafe fn uninitialized_bucket(&self, bucket: BucketIndex, length: Length, capacity: Capacity) -> &'a [Raw<T>] {
         debug_assert!(bucket.0 < capacity.max_buckets().0);
 
-        let (length, bucket_capacity) = Self::bucket_properties(bucket, length, capacity);
+        let (length, bucket_capacity) = bucket_properties(bucket, length, capacity);
         debug_assert!(length.0 <= bucket_capacity.0);
         debug_assert!(bucket_capacity == capacity.of_bucket(bucket));
 
@@ -341,7 +362,7 @@ impl<T> BucketArray<T> {
         //  Safety:
         //  -   The length matches the number of initialized elements.
         //  -   The capacity matches the capacity of the bucket.
-        bucket.get_uninitialized_slice_mut(length, bucket_capacity)
+        bucket.get_uninitialized_slice(length, bucket_capacity)
     }
 
     //  Initializes the next bucket, if necessary, returns the new number of buckets.
@@ -376,36 +397,35 @@ impl<T> BucketArray<T> {
 
         Ok(NumberBuckets(index.0 + 1))
     }
+}
 
-    //  Returns the properties of the Bucket.
-    //
-    //  The result is the number of initialized elements, and the capacity.
-    fn bucket_properties(bucket: BucketIndex, length: Length, capacity: Capacity) -> (BucketLength, BucketCapacity) {
-        let prior = capacity.before_bucket(bucket);
-        let capacity = capacity.of_bucket(bucket);
-
-        if length.0 <= prior.0 {
-            return (BucketLength(0), capacity);
-        }
-
-        let length = length.0 - prior.0;
-
-        (BucketLength(cmp::min(length, capacity.0)), capacity)
+impl<'a, T> Clone for BucketSlice<'a, T> {
+    fn clone(&self) -> Self {
+        *self
     }
 }
 
-impl<T> Default for BucketArray<T> {
-    fn default() -> Self {
-        if mem::size_of::<T>() == 0 {
-            panic_zero_sized_element();
-        }
-        Self(Default::default())
-    }
-}
+impl<'a, T> Copy for BucketSlice<'a, T> {}
 
 //
 //  Implementation Details
 //
+
+//  Returns the properties of the Bucket.
+//
+//  The result is the number of initialized elements, and the capacity.
+fn bucket_properties(bucket: BucketIndex, length: Length, capacity: Capacity) -> (BucketLength, BucketCapacity) {
+    let prior = capacity.before_bucket(bucket);
+    let capacity = capacity.of_bucket(bucket);
+
+    if length.0 <= prior.0 {
+        return (BucketLength(0), capacity);
+    }
+
+    let length = length.0 - prior.0;
+
+    (BucketLength(cmp::min(length, capacity.0)), capacity)
+}
 
 //  A single Bucket.
 struct Bucket<T>(cell::Cell<*mut Raw<T>>, marker::PhantomData<T>);
@@ -552,16 +572,15 @@ impl<T> Bucket<T> {
     //
     //  -   Assumes exclusive access past the first length elements.
     //  -   Assumes capacity matches the capacity of the bucket.
-    #[allow(clippy::mut_from_ref)]
-    unsafe fn get_uninitialized_slice_mut(&self, length: BucketLength, capacity: BucketCapacity) -> &mut [Raw<T>] {
+    unsafe fn get_uninitialized_slice(&self, length: BucketLength, capacity: BucketCapacity) -> &[Raw<T>] {
         debug_assert!(length.0 <= capacity.0);
 
         let ptr = self.0.get().add(length.0);
 
         //  Safety:
-        //  -   Exclusive access past the first length elements is assumed.
+        //  -   No ongoing exclusive access, per borrowing rules.
         //  -   Length is assumed to be less than capacity.
-        slice::from_raw_parts_mut(ptr, capacity.0 - length.0)
+        slice::from_raw_parts(ptr, capacity.0 - length.0)
     }
 
     //  Clears a bucket of its elements.
@@ -717,10 +736,12 @@ mod tests {
         assert_eq!(Ok(()), allocated);
 
         let count = SpyCount::zero();
-        let uninitialized = unsafe { bucket.get_uninitialized_slice_mut(BucketLength(0), capacity) };
+        let uninitialized = unsafe { bucket.get_uninitialized_slice(BucketLength(0), capacity) };
 
-        for place in &mut uninitialized[..initialized] {
-            place.write(SpyElement::new(&count));
+        for place in &uninitialized[..initialized] {
+            //  Safety:
+            //  -   Exclusive access for the duration of the call.
+            unsafe { place.write(SpyElement::new(&count)) };
         }
 
         assert_eq!(initialized, count.get());
@@ -743,7 +764,7 @@ mod tests {
             type BA = BucketArray<SpyElement<'static>>;
 
             let capacity = BA::capacity(1);
-            let (length, capacity) = BA::bucket_properties(BucketIndex(bucket), Length(length), capacity);
+            let (length, capacity) = super::bucket_properties(BucketIndex(bucket), Length(length), capacity);
             (length.0, capacity.0)
         }
 
@@ -767,7 +788,7 @@ mod tests {
             type BA = BucketArray<SpyElement<'static>>;
 
             let capacity = BA::capacity(4);
-            let (length, capacity) = BA::bucket_properties(BucketIndex(bucket), Length(length), capacity);
+            let (length, capacity) = super::bucket_properties(BucketIndex(bucket), Length(length), capacity);
             (length.0, capacity.0)
         }
 
@@ -791,10 +812,10 @@ mod tests {
     fn bucket_array_get_mut() {
         let allocator = TestAllocator::unlimited();
 
-        let mut buckets = BucketArray::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let mut buckets: BucketArray<_, DEFAULT_BUCKETS> = BucketArray::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
-        let (length, failure) = unsafe { buckets.try_extend(0..7, Length(0), capacity, &allocator) };
+        let (length, failure) = unsafe { buckets.as_slice().try_extend(0..7, Length(0), capacity, &allocator) };
 
         assert_eq!(Length(7), length);
         assert_eq!(None, failure);
@@ -805,7 +826,7 @@ mod tests {
 
         assert_eq!(None, unsafe { buckets.get_mut(ElementIndex(7), length, capacity) });
 
-        let e = unsafe { buckets.get(ElementIndex(2), length, capacity) };
+        let e = unsafe { buckets.as_slice().get(ElementIndex(2), length, capacity) };
         assert_eq!(Some(&7), e);
     }
 
@@ -813,17 +834,17 @@ mod tests {
     fn bucket_array_get_unchecked_mut() {
         let allocator = TestAllocator::unlimited();
 
-        let mut buckets = BucketArray::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let mut buckets: BucketArray<_, DEFAULT_BUCKETS> = BucketArray::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
-        let (length, failure) = unsafe { buckets.try_extend(0..7, Length(0), capacity, &allocator) };
+        let (length, failure) = unsafe { buckets.as_slice().try_extend(0..7, Length(0), capacity, &allocator) };
 
         assert_eq!(Length(7), length);
         assert_eq!(None, failure);
 
         unsafe { *buckets.get_unchecked_mut(ElementIndex(2), capacity) = 7 };
 
-        let e = unsafe { buckets.get(ElementIndex(2), length, capacity) };
+        let e = unsafe { buckets.as_slice().get(ElementIndex(2), length, capacity) };
         assert_eq!(Some(&7), e);
     }
 
@@ -831,23 +852,32 @@ mod tests {
     fn bucket_array_push_bucket() {
         let allocator = TestAllocator::unlimited();
 
-        let buckets = BucketArray::<SpyElement<'static>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'static>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         unsafe {
-            buckets.push_bucket(NumberBuckets(0), capacity, &allocator).unwrap();
-            buckets.push_bucket(NumberBuckets(1), capacity, &allocator).unwrap();
-            buckets.push_bucket(NumberBuckets(2), capacity, &allocator).unwrap();
+            buckets
+                .as_slice()
+                .push_bucket(NumberBuckets(0), capacity, &allocator)
+                .unwrap();
+            buckets
+                .as_slice()
+                .push_bucket(NumberBuckets(1), capacity, &allocator)
+                .unwrap();
+            buckets
+                .as_slice()
+                .push_bucket(NumberBuckets(2), capacity, &allocator)
+                .unwrap();
         }
 
         assert_eq!(vec![8, 8, 16], allocator.allocation_sizes());
-        assert_eq!(NumberBuckets(3), buckets.number_buckets());
+        assert_eq!(NumberBuckets(3), buckets.as_slice().number_buckets());
 
         for index in 0..3 {
             assert!(buckets.0[index].is_allocated());
         }
 
-        for index in 4..MAX_BUCKETS {
+        for index in 4..DEFAULT_BUCKETS {
             assert!(!buckets.0[index].is_allocated());
         }
     }
@@ -858,13 +888,21 @@ mod tests {
 
         let allocator = TestAllocator::unlimited();
 
-        let buckets = BucketArray::<SpyElement<'static>>::default();
+        let buckets = BucketArray::<SpyElement<'static>, DEFAULT_BUCKETS>::default();
         let capacity = Capacity::new(1, NUMBER_BUCKETS);
 
-        let pushed = unsafe { buckets.push_bucket(NumberBuckets(NUMBER_BUCKETS - 1), capacity, &allocator) };
+        let pushed = unsafe {
+            buckets
+                .as_slice()
+                .push_bucket(NumberBuckets(NUMBER_BUCKETS - 1), capacity, &allocator)
+        };
         assert_eq!(Ok(NumberBuckets(NUMBER_BUCKETS)), pushed);
 
-        let pushed = unsafe { buckets.push_bucket(NumberBuckets(NUMBER_BUCKETS), capacity, &allocator) };
+        let pushed = unsafe {
+            buckets
+                .as_slice()
+                .push_bucket(NumberBuckets(NUMBER_BUCKETS), capacity, &allocator)
+        };
         assert_eq!(Err(Failure::OutOfBuckets), pushed);
     }
 
@@ -872,10 +910,10 @@ mod tests {
     fn bucket_array_push_bucket_out_of_memory() {
         let allocator = TestAllocator::default();
 
-        let buckets = BucketArray::<SpyElement<'static>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'static>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
-        let pushed = unsafe { buckets.push_bucket(NumberBuckets(0), capacity, &allocator) };
+        let pushed = unsafe { buckets.as_slice().push_bucket(NumberBuckets(0), capacity, &allocator) };
         assert_eq!(Err(Failure::OutOfMemory), pushed);
     }
 
@@ -883,20 +921,24 @@ mod tests {
     fn bucket_array_try_reserve() {
         let allocator = TestAllocator::unlimited();
 
-        let buckets = BucketArray::<SpyElement<'static>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'static>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
-        let reserved = unsafe { buckets.try_reserve(Length(17), Length(0), capacity, &allocator) };
+        let reserved = unsafe {
+            buckets
+                .as_slice()
+                .try_reserve(Length(17), Length(0), capacity, &allocator)
+        };
 
         assert_eq!(Ok(()), reserved);
         assert_eq!(vec![8, 8, 16, 32, 64, 128], allocator.allocation_sizes());
-        assert_eq!(NumberBuckets(6), buckets.number_buckets());
+        assert_eq!(NumberBuckets(6), buckets.as_slice().number_buckets());
 
         for index in 0..6 {
             assert!(buckets.0[index].is_allocated());
         }
 
-        for index in 6..MAX_BUCKETS {
+        for index in 6..DEFAULT_BUCKETS {
             assert!(!buckets.0[index].is_allocated());
         }
     }
@@ -906,16 +948,20 @@ mod tests {
     fn bucket_array_try_reserve_all() {
         let allocator = TestAllocator::unlimited();
 
-        let buckets = BucketArray::<i32>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<i32, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
-        let reserved = unsafe { buckets.try_reserve(Length(2 * 1024 * 1024), Length(0), capacity, &allocator) };
+        let reserved = unsafe {
+            buckets
+                .as_slice()
+                .try_reserve(Length(2 * 1024 * 1024), Length(0), capacity, &allocator)
+        };
 
         assert_eq!(Ok(()), reserved);
-        assert_eq!(MAX_BUCKETS, allocator.allocations().len());
-        assert_eq!(NumberBuckets(MAX_BUCKETS), buckets.number_buckets());
+        assert_eq!(DEFAULT_BUCKETS, allocator.allocations().len());
+        assert_eq!(NumberBuckets(DEFAULT_BUCKETS), buckets.as_slice().number_buckets());
 
-        for index in 0..MAX_BUCKETS {
+        for index in 0..DEFAULT_BUCKETS {
             assert!(buckets.0[index].is_allocated());
         }
     }
@@ -924,12 +970,16 @@ mod tests {
     fn bucket_array_try_reserve_elements_overflow() {
         let allocator = TestAllocator::default();
 
-        let buckets = BucketArray::<SpyElement<'static>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'static>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         let half_usize = Length(usize::MAX / 2 + 1);
 
-        let reserved = unsafe { buckets.try_reserve(half_usize, half_usize, capacity, &allocator) };
+        let reserved = unsafe {
+            buckets
+                .as_slice()
+                .try_reserve(half_usize, half_usize, capacity, &allocator)
+        };
 
         assert_eq!(Err(Failure::ElementsOverflow), reserved);
     }
@@ -940,12 +990,12 @@ mod tests {
 
         let allocator = TestAllocator::unlimited();
 
-        let buckets = BucketArray::<SpyElement<'static>>::default();
+        let buckets = BucketArray::<SpyElement<'static>, DEFAULT_BUCKETS>::default();
         let capacity = Capacity::new(1, NUMBER_BUCKETS);
 
         let extra = Length(1usize << NUMBER_BUCKETS);
 
-        let reserved = unsafe { buckets.try_reserve(extra, Length(0), capacity, &allocator) };
+        let reserved = unsafe { buckets.as_slice().try_reserve(extra, Length(0), capacity, &allocator) };
 
         assert_eq!(Err(Failure::OutOfBuckets), reserved);
         assert_eq!(vec![8, 8, 16], allocator.allocation_sizes());
@@ -954,7 +1004,7 @@ mod tests {
             assert!(buckets.0[index].is_allocated());
         }
 
-        for index in NUMBER_BUCKETS..MAX_BUCKETS {
+        for index in NUMBER_BUCKETS..DEFAULT_BUCKETS {
             assert!(!buckets.0[index].is_allocated());
         }
     }
@@ -965,12 +1015,12 @@ mod tests {
 
         let allocator = TestAllocator::new(NUMBER_BUCKETS);
 
-        let buckets = BucketArray::<SpyElement<'static>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'static>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         let extra = Length(1usize << NUMBER_BUCKETS);
 
-        let reserved = unsafe { buckets.try_reserve(extra, Length(0), capacity, &allocator) };
+        let reserved = unsafe { buckets.as_slice().try_reserve(extra, Length(0), capacity, &allocator) };
 
         assert_eq!(Err(Failure::OutOfMemory), reserved);
         assert_eq!(vec![8, 8, 16], allocator.allocation_sizes());
@@ -979,7 +1029,7 @@ mod tests {
             assert!(buckets.0[index].is_allocated());
         }
 
-        for index in NUMBER_BUCKETS..MAX_BUCKETS {
+        for index in NUMBER_BUCKETS..DEFAULT_BUCKETS {
             assert!(!buckets.0[index].is_allocated());
         }
     }
@@ -990,12 +1040,12 @@ mod tests {
 
         let count = SpyCount::zero();
 
-        let buckets = BucketArray::<SpyElement<'_>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'_>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         let pushed = unsafe {
             let value = SpyElement::new(&count);
-            buckets.try_push(value, Length(0), capacity, &allocator)
+            buckets.as_slice().try_push(value, Length(0), capacity, &allocator)
         };
 
         assert_eq!(Ok(Length(1)), pushed);
@@ -1003,7 +1053,7 @@ mod tests {
 
         let pushed = unsafe {
             let value = SpyElement::new(&count);
-            buckets.try_push(value, Length(1), capacity, &allocator)
+            buckets.as_slice().try_push(value, Length(1), capacity, &allocator)
         };
 
         assert_eq!(Ok(Length(2)), pushed);
@@ -1011,7 +1061,7 @@ mod tests {
 
         let pushed = unsafe {
             let value = SpyElement::new(&count);
-            buckets.try_push(value, Length(2), capacity, &allocator)
+            buckets.as_slice().try_push(value, Length(2), capacity, &allocator)
         };
 
         assert_eq!(Ok(Length(3)), pushed);
@@ -1019,7 +1069,7 @@ mod tests {
 
         let pushed = unsafe {
             let value = SpyElement::new(&count);
-            buckets.try_push(value, Length(3), capacity, &allocator)
+            buckets.as_slice().try_push(value, Length(3), capacity, &allocator)
         };
 
         assert_eq!(Ok(Length(4)), pushed);
@@ -1034,12 +1084,12 @@ mod tests {
 
         let count = SpyCount::zero();
 
-        let buckets = BucketArray::<SpyElement<'_>>::default();
+        let buckets = BucketArray::<SpyElement<'_>, DEFAULT_BUCKETS>::default();
         let capacity = Capacity::new(1, NUMBER_BUCKETS);
 
         let pushed = unsafe {
             let value = SpyElement::new(&count);
-            buckets.try_push(value, Length(0), capacity, &allocator)
+            buckets.as_slice().try_push(value, Length(0), capacity, &allocator)
         };
 
         assert_eq!(Ok(Length(1)), pushed);
@@ -1047,7 +1097,7 @@ mod tests {
 
         let pushed = unsafe {
             let value = SpyElement::new(&count);
-            buckets.try_push(value, Length(1), capacity, &allocator)
+            buckets.as_slice().try_push(value, Length(1), capacity, &allocator)
         };
 
         assert_eq!(Ok(Length(2)), pushed);
@@ -1055,7 +1105,7 @@ mod tests {
 
         let pushed = unsafe {
             let value = SpyElement::new(&count);
-            buckets.try_push(value, Length(2), capacity, &allocator)
+            buckets.as_slice().try_push(value, Length(2), capacity, &allocator)
         };
 
         assert_eq!(Err(Failure::OutOfBuckets), pushed);
@@ -1070,12 +1120,12 @@ mod tests {
 
         let count = SpyCount::zero();
 
-        let buckets = BucketArray::<SpyElement<'_>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'_>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         let pushed = unsafe {
             let value = SpyElement::new(&count);
-            buckets.try_push(value, Length(0), capacity, &allocator)
+            buckets.as_slice().try_push(value, Length(0), capacity, &allocator)
         };
 
         assert_eq!(Ok(Length(1)), pushed);
@@ -1083,7 +1133,7 @@ mod tests {
 
         let pushed = unsafe {
             let value = SpyElement::new(&count);
-            buckets.try_push(value, Length(1), capacity, &allocator)
+            buckets.as_slice().try_push(value, Length(1), capacity, &allocator)
         };
 
         assert_eq!(Ok(Length(2)), pushed);
@@ -1091,7 +1141,7 @@ mod tests {
 
         let pushed = unsafe {
             let value = SpyElement::new(&count);
-            buckets.try_push(value, Length(2), capacity, &allocator)
+            buckets.as_slice().try_push(value, Length(2), capacity, &allocator)
         };
 
         assert_eq!(Err(Failure::OutOfMemory), pushed);
@@ -1110,10 +1160,14 @@ mod tests {
             SpyElement::new(&count),
         ];
 
-        let buckets = BucketArray::<SpyElement<'_>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'_>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
-        let (length, failure) = unsafe { buckets.try_extend(collection, Length(0), capacity, &allocator) };
+        let (length, failure) = unsafe {
+            buckets
+                .as_slice()
+                .try_extend(collection, Length(0), capacity, &allocator)
+        };
 
         assert_eq!(Length(4), length);
         assert_eq!(None, failure);
@@ -1136,10 +1190,14 @@ mod tests {
             SpyElement::new(&count),
         ];
 
-        let buckets = BucketArray::<SpyElement<'_>>::default();
+        let buckets = BucketArray::<SpyElement<'_>, DEFAULT_BUCKETS>::default();
         let capacity = Capacity::new(1, NUMBER_BUCKETS);
 
-        let (length, failure) = unsafe { buckets.try_extend(collection, Length(0), capacity, &allocator) };
+        let (length, failure) = unsafe {
+            buckets
+                .as_slice()
+                .try_extend(collection, Length(0), capacity, &allocator)
+        };
 
         assert_eq!(Length(4), length);
         assert_eq!(Some(Failure::OutOfBuckets), failure);
@@ -1162,10 +1220,14 @@ mod tests {
             SpyElement::new(&count),
         ];
 
-        let buckets = BucketArray::<SpyElement<'_>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'_>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
-        let (length, failure) = unsafe { buckets.try_extend(collection, Length(0), capacity, &allocator) };
+        let (length, failure) = unsafe {
+            buckets
+                .as_slice()
+                .try_extend(collection, Length(0), capacity, &allocator)
+        };
 
         assert_eq!(Length(4), length);
         assert_eq!(Some(Failure::OutOfMemory), failure);
@@ -1184,17 +1246,19 @@ mod tests {
             SpyElement::new(&count),
         ];
 
-        let buckets = BucketArray::<SpyElement<'_>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'_>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         unsafe {
-            buckets.try_extend(collection, Length(0), capacity, &allocator);
+            buckets
+                .as_slice()
+                .try_extend(collection, Length(0), capacity, &allocator);
         }
 
         assert_eq!(vec![8, 8, 16], allocator.allocation_sizes());
 
         unsafe {
-            buckets.shrink(Length(4), capacity, &allocator);
+            buckets.as_slice().shrink(Length(4), capacity, &allocator);
         }
 
         assert_eq!(vec![8, 8, 16], allocator.allocation_sizes());
@@ -1212,21 +1276,25 @@ mod tests {
             SpyElement::new(&count),
         ];
 
-        let buckets = BucketArray::<SpyElement<'_>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'_>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         unsafe {
-            let _ = buckets.try_reserve(Length(16), Length(0), capacity, &allocator);
+            let _ = buckets
+                .as_slice()
+                .try_reserve(Length(16), Length(0), capacity, &allocator);
         }
 
         assert_eq!(vec![8, 8, 16, 32, 64], allocator.allocation_sizes());
 
         unsafe {
-            buckets.try_extend(collection, Length(0), capacity, &allocator);
+            buckets
+                .as_slice()
+                .try_extend(collection, Length(0), capacity, &allocator);
         }
 
         unsafe {
-            buckets.shrink(Length(4), capacity, &allocator);
+            buckets.as_slice().shrink(Length(4), capacity, &allocator);
         }
 
         assert_eq!(vec![8, 8, 16], allocator.allocation_sizes());
@@ -1236,17 +1304,19 @@ mod tests {
     fn bucket_array_shrink_all() {
         let allocator = TestAllocator::unlimited();
 
-        let buckets = BucketArray::<SpyElement<'_>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'_>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         unsafe {
-            let _ = buckets.try_reserve(Length(16), Length(0), capacity, &allocator);
+            let _ = buckets
+                .as_slice()
+                .try_reserve(Length(16), Length(0), capacity, &allocator);
         }
 
         assert_eq!(vec![8, 8, 16, 32, 64], allocator.allocation_sizes());
 
         unsafe {
-            buckets.shrink(Length(0), capacity, &allocator);
+            buckets.as_slice().shrink(Length(0), capacity, &allocator);
         }
 
         assert_eq!(0, allocator.allocations().len());
@@ -1256,11 +1326,13 @@ mod tests {
     fn bucket_array_clear_empty() {
         let allocator = TestAllocator::unlimited();
 
-        let buckets = BucketArray::<SpyElement<'_>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'_>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         unsafe {
-            let _ = buckets.try_reserve(Length(16), Length(0), capacity, &allocator);
+            let _ = buckets
+                .as_slice()
+                .try_reserve(Length(16), Length(0), capacity, &allocator);
         }
 
         let mut buckets = buckets;
@@ -1281,11 +1353,13 @@ mod tests {
             SpyElement::new(&count),
         ];
 
-        let buckets = BucketArray::<SpyElement<'_>>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<SpyElement<'_>, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         unsafe {
-            buckets.try_extend(collection, Length(0), capacity, &allocator);
+            buckets
+                .as_slice()
+                .try_extend(collection, Length(0), capacity, &allocator);
         }
 
         let mut buckets = buckets;
@@ -1305,11 +1379,13 @@ mod tests {
         let allocator = PanickyAllocator::default();
         allocator.allowed.set(NB_ALLOCATIONS);
 
-        let buckets = BucketArray::<i32>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<i32, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         let panicked = catch_unwind(AssertUnwindSafe(|| unsafe {
-            let _ = buckets.try_reserve(Length(4), Length(0), capacity, &allocator);
+            let _ = buckets
+                .as_slice()
+                .try_reserve(Length(4), Length(0), capacity, &allocator);
         }));
         assert!(panicked.is_err());
 
@@ -1326,18 +1402,20 @@ mod tests {
 
         let allocator = TestAllocator::unlimited();
 
-        let buckets = BucketArray::<i32>::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets = BucketArray::<i32, DEFAULT_BUCKETS>::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         unsafe {
-            let _ = buckets.try_reserve(Length(4), Length(0), capacity, &allocator);
+            let _ = buckets
+                .as_slice()
+                .try_reserve(Length(4), Length(0), capacity, &allocator);
         }
         assert_eq!(3, allocator.allocations.borrow().len());
 
         allocator.allocations.borrow_mut().remove(FAILED_DEALLOCATION);
 
         let panicked = catch_unwind(AssertUnwindSafe(|| {
-            unsafe { buckets.shrink(Length(0), capacity, &allocator) };
+            unsafe { buckets.as_slice().shrink(Length(0), capacity, &allocator) };
         }));
         assert!(panicked.is_err());
 
@@ -1352,12 +1430,14 @@ mod tests {
 
         let allocator = TestAllocator::unlimited();
 
-        let buckets = BucketArray::default();
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let buckets: BucketArray<_, DEFAULT_BUCKETS> = BucketArray::default();
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         let panicked = catch_unwind(AssertUnwindSafe(|| unsafe {
             let collection = PanickyIterator::new(3);
-            buckets.try_extend(collection, Length(0), capacity, &allocator);
+            buckets
+                .as_slice()
+                .try_extend(collection, Length(0), capacity, &allocator);
         }));
         assert!(panicked.is_err());
 

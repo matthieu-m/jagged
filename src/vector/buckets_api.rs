@@ -1,17 +1,17 @@
 //! The high-level API of the Buckets of the vector.
 
-pub use super::buckets::BucketArray;
+pub use super::buckets::{BucketArray, BucketSlice};
 
-use super::root::{cmp, fmt, hash, iter, ptr};
+use super::root::{cmp, fmt, hash, iter};
 
 use super::allocator::Allocator;
-use super::buckets::MAX_BUCKETS;
+use super::buckets::DEFAULT_BUCKETS;
 use super::capacity::{BucketIndex, Capacity, ElementIndex, Length};
 use super::failure::{Failure, Result};
 
 //  Shared Reader
 pub struct BucketsSharedReader<'a, T> {
-    buckets: &'a BucketArray<T>,
+    buckets: BucketSlice<'a, T>,
     length: Length,
     capacity: Capacity,
 }
@@ -22,7 +22,7 @@ impl<'a, T> BucketsSharedReader<'a, T> {
     //  #   Safety
     //
     //  -   Assumes that length is less than the current length.
-    pub unsafe fn new(buckets: &'a BucketArray<T>, length: Length, capacity: Capacity) -> Self {
+    pub unsafe fn new(buckets: BucketSlice<'a, T>, length: Length, capacity: Capacity) -> Self {
         Self {
             buckets,
             length,
@@ -97,7 +97,7 @@ impl<'a, T> BucketsSharedReader<'a, T> {
 
     //  Returns an iterator to iterate over the buckets.
     pub fn iter_buckets(&self) -> BucketIterator<'a, T> {
-        BucketIterator::create(self)
+        BucketIterator::create(*self)
     }
 }
 
@@ -266,7 +266,7 @@ impl<'a, T: PartialEq> PartialEq for BucketsSharedReader<'a, T> {
 
 impl<'a, T: Ord> Ord for BucketsSharedReader<'a, T> {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        if self.length == other.length && ptr::eq(self.buckets as *const _, other.buckets as *const _) {
+        if self.length == other.length && self.buckets.is_ptr_eq(other.buckets) {
             return cmp::Ordering::Equal;
         }
 
@@ -299,7 +299,7 @@ impl<'a, T> iter::IntoIterator for BucketsSharedReader<'a, T> {
 
 //  Shared Writer
 pub struct BucketsSharedWriter<'a, T> {
-    buckets: &'a BucketArray<T>,
+    buckets: BucketSlice<'a, T>,
     length: Length,
     capacity: Capacity,
 }
@@ -311,7 +311,7 @@ impl<'a, T> BucketsSharedWriter<'a, T> {
     //
     //  -   Assumes than length exactly matches the current length.
     //  -   Assumes a single writer thread.
-    pub unsafe fn new(buckets: &'a BucketArray<T>, length: Length, capacity: Capacity) -> Self {
+    pub unsafe fn new(buckets: BucketSlice<'a, T>, length: Length, capacity: Capacity) -> Self {
         Self {
             buckets,
             length,
@@ -376,19 +376,19 @@ impl<'a, T> BucketsSharedWriter<'a, T> {
 }
 
 //  Exclusive Writer
-pub struct BucketsExclusiveWriter<'a, T> {
-    buckets: &'a mut BucketArray<T>,
+pub struct BucketsExclusiveWriter<'a, T, const N: usize> {
+    buckets: &'a mut BucketArray<T, N>,
     length: Length,
     capacity: Capacity,
 }
 
-impl<'a, T> BucketsExclusiveWriter<'a, T> {
+impl<'a, T, const N: usize> BucketsExclusiveWriter<'a, T, N> {
     //  Creates a new instance.
     //
     //  #   Safety
     //
     //  -   Assumes than length exactly matches the current length.
-    pub unsafe fn new(buckets: &'a mut BucketArray<T>, length: Length, capacity: Capacity) -> Self {
+    pub unsafe fn new(buckets: &'a mut BucketArray<T, N>, length: Length, capacity: Capacity) -> Self {
         Self {
             buckets,
             length,
@@ -426,24 +426,17 @@ impl<'a, T> BucketsExclusiveWriter<'a, T> {
 /// While less ergonomic, it can be faster to take advantage of the chunked nature of the underlying storage rather than
 /// incur bounds checks cost for every element.
 pub struct BucketIterator<'a, T> {
-    buckets: [&'a [T]; MAX_BUCKETS],
+    buckets: BucketsSharedReader<'a, T>,
     index: BucketIndex,
 }
 
 impl<'a, T> BucketIterator<'a, T> {
     //  Creates an instance of BucketIterator.
-    fn create(reader: &BucketsSharedReader<'a, T>) -> Self {
-        let mut result = BucketIterator {
-            buckets: Default::default(),
+    fn create(buckets: BucketsSharedReader<'a, T>) -> Self {
+        BucketIterator {
+            buckets,
             index: BucketIndex(0),
-        };
-
-        for index in 0..reader.number_buckets() {
-            let index = BucketIndex(index);
-            result.buckets[index.0] = reader.bucket(index);
         }
-
-        result
     }
 }
 
@@ -455,10 +448,10 @@ impl<'a, T> iter::Iterator for BucketIterator<'a, T> {
             return None;
         }
 
-        let slice = self.buckets[self.index.0];
+        let slice = self.buckets.bucket(self.index);
 
         if slice.is_empty() {
-            self.index = BucketIndex(MAX_BUCKETS);
+            self.index = BucketIndex(DEFAULT_BUCKETS);
             None
         } else {
             self.index = BucketIndex(self.index.0 + 1);
@@ -514,7 +507,11 @@ mod tests {
     {
         let buckets = BucketArray::default();
 
-        let (length, failure) = unsafe { buckets.try_extend(collection, Length(0), capacity, allocator) };
+        let (length, failure) = unsafe {
+            buckets
+                .as_slice()
+                .try_extend(collection, Length(0), capacity, allocator)
+        };
 
         assert_eq!(None, failure);
 
@@ -526,7 +523,7 @@ mod tests {
         length: Length,
         capacity: Capacity,
     ) -> BucketsSharedReader<'_, T> {
-        BucketsSharedReader::new(buckets, length, capacity)
+        BucketsSharedReader::new(buckets.as_slice(), length, capacity)
     }
 
     unsafe fn shared_writer<T>(
@@ -534,14 +531,14 @@ mod tests {
         length: Length,
         capacity: Capacity,
     ) -> BucketsSharedWriter<'_, T> {
-        BucketsSharedWriter::new(buckets, length, capacity)
+        BucketsSharedWriter::new(buckets.as_slice(), length, capacity)
     }
 
-    unsafe fn exclusive_writer<T>(
-        buckets: &mut BucketArray<T>,
+    unsafe fn exclusive_writer<T, const N: usize>(
+        buckets: &mut BucketArray<T, N>,
         length: Length,
         capacity: Capacity,
-    ) -> BucketsExclusiveWriter<'_, T> {
+    ) -> BucketsExclusiveWriter<'_, T, N> {
         BucketsExclusiveWriter::new(buckets, length, capacity)
     }
 
@@ -551,7 +548,7 @@ mod tests {
 
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         let (_, buckets) = construct(vec!["Hello".to_string()], capacity, &allocator);
 
@@ -568,7 +565,7 @@ mod tests {
     fn reader_properties() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         let (length, buckets) = construct(vec![1], capacity, &allocator);
 
@@ -579,7 +576,7 @@ mod tests {
 
         assert_eq!(0, reader.capacity());
         assert_eq!(2 * 1024 * 1024, reader.max_capacity());
-        assert_eq!(MAX_BUCKETS, reader.max_buckets());
+        assert_eq!(DEFAULT_BUCKETS, reader.max_buckets());
 
         let reader = unsafe { shared_reader(&buckets, length, capacity) };
         assert!(!reader.is_empty());
@@ -588,14 +585,14 @@ mod tests {
 
         assert_eq!(1, reader.capacity());
         assert_eq!(2 * 1024 * 1024, reader.max_capacity());
-        assert_eq!(MAX_BUCKETS, reader.max_buckets());
+        assert_eq!(DEFAULT_BUCKETS, reader.max_buckets());
     }
 
     #[test]
     fn reader_get() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         let (_, buckets) = construct(vec![1, 2, 3], capacity, &allocator);
 
@@ -611,7 +608,7 @@ mod tests {
     fn reader_get_unchecked() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         let (_, buckets) = construct(vec![1, 2, 3], capacity, &allocator);
 
@@ -625,7 +622,7 @@ mod tests {
 
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (_, buckets) = construct(vec![1, 2, 3, 4, 5], capacity, &allocator);
 
@@ -658,7 +655,7 @@ mod tests {
     fn reader_debug() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (_, buckets) = construct(vec![1, 2, 3, 4, 5], capacity, &allocator);
 
@@ -679,7 +676,7 @@ mod tests {
     fn reader_equal_same_underlying() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (_, buckets) = construct(vec![1, 2, 3, 4, 5], capacity, &allocator);
 
@@ -698,7 +695,7 @@ mod tests {
     fn reader_equal_different_underlying() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (_, left_buckets) = construct(vec![1, 2, 3, 4], capacity, &allocator);
         let (_, right_buckets) = construct(vec![1, 2, 4, 8], capacity, &allocator);
@@ -718,8 +715,8 @@ mod tests {
     fn reader_equal_different_capacity() {
         let allocator = TestAllocator::unlimited();
 
-        let left_capacity = Capacity::new(1, MAX_BUCKETS);
-        let right_capacity = Capacity::new(2, MAX_BUCKETS);
+        let left_capacity = Capacity::new(1, DEFAULT_BUCKETS);
+        let right_capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (_, left_buckets) = construct(vec![1, 2, 3, 4, 5], left_capacity, &allocator);
         let (_, right_buckets) = construct(vec![1, 2, 3, 5, 7], right_capacity, &allocator);
@@ -747,7 +744,7 @@ mod tests {
 
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (_, buckets) = construct(vec![1, 2, 3, 4, 5], capacity, &allocator);
 
@@ -762,7 +759,7 @@ mod tests {
     fn reader_partialord_same_underlying() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (_, buckets) = construct(vec![1.0, 2.0, f64::NAN], capacity, &allocator);
 
@@ -787,7 +784,7 @@ mod tests {
     fn reader_partialord_different_underlying() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (_, left_buckets) = construct(vec![1.0, 2.0, f64::NAN], capacity, &allocator);
         let (_, right_buckets) = construct(vec![1.0, 2.0, f64::NAN], capacity, &allocator);
@@ -813,8 +810,8 @@ mod tests {
     fn reader_partialord_different_capacity() {
         let allocator = TestAllocator::unlimited();
 
-        let left_cap = Capacity::new(1, MAX_BUCKETS);
-        let right_cap = Capacity::new(2, MAX_BUCKETS);
+        let left_cap = Capacity::new(1, DEFAULT_BUCKETS);
+        let right_cap = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (_, left_buckets) = construct(vec![1.0, 2.0, f64::NAN], left_cap, &allocator);
         let (_, right_buckets) = construct(vec![1.0, 2.0, f64::NAN], right_cap, &allocator);
@@ -840,7 +837,7 @@ mod tests {
     fn reader_ord_same_underlying() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (_, buckets) = construct(vec![1, 2, 3], capacity, &allocator);
 
@@ -865,7 +862,7 @@ mod tests {
     fn reader_ord_different_underlying() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (_, left_buckets) = construct(vec![1, 2, 3], capacity, &allocator);
         let (_, right_buckets) = construct(vec![1, 2, 4], capacity, &allocator);
@@ -891,8 +888,8 @@ mod tests {
     fn reader_ord_different_capacity() {
         let allocator = TestAllocator::unlimited();
 
-        let left_cap = Capacity::new(1, MAX_BUCKETS);
-        let right_cap = Capacity::new(2, MAX_BUCKETS);
+        let left_cap = Capacity::new(1, DEFAULT_BUCKETS);
+        let right_cap = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (_, left_buckets) = construct(vec![1, 2, 3], left_cap, &allocator);
         let (_, right_buckets) = construct(vec![1, 2, 4], right_cap, &allocator);
@@ -918,7 +915,7 @@ mod tests {
     fn reader_iter_buckets() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (length, buckets) = construct(0..11, capacity, &allocator);
 
@@ -937,7 +934,7 @@ mod tests {
     fn reader_iter_elements() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (length, buckets) = construct(0..5, capacity, &allocator);
 
@@ -957,7 +954,7 @@ mod tests {
     fn writer_shrink() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (length, mut buckets) = construct(0..5, capacity, &allocator);
 
@@ -982,7 +979,7 @@ mod tests {
     fn writer_try_reserve() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (length, buckets) = construct(0..5, capacity, &allocator);
 
@@ -996,7 +993,7 @@ mod tests {
     fn writer_try_push() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (length, buckets) = construct(0..5, capacity, &allocator);
 
@@ -1010,7 +1007,7 @@ mod tests {
     fn writer_try_extend() {
         let allocator = TestAllocator::new(4);
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (length, buckets) = construct(0..5, capacity, &allocator);
 
@@ -1027,7 +1024,7 @@ mod tests {
 
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let (length, mut buckets) = construct(0..5, capacity, &allocator);
 
@@ -1048,7 +1045,7 @@ mod tests {
     fn exclusive_clear() {
         let allocator = TestAllocator::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let (length, mut buckets) = construct(items, capacity, &allocator);

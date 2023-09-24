@@ -17,22 +17,20 @@ use super::hooks::DefaultVectorHooks;
 //  Public Interface
 //
 
+pub use super::buckets::DEFAULT_BUCKETS;
+
 /// `Vector`
-///
-/// Limitation: the maximum number of buckets cannot be specified, due to the lack of const generics.
 #[cfg(not(feature = "with-std"))]
-pub struct Vector<T, H: VectorHooks> {
+pub struct Vector<T, const N: usize, H: VectorHooks> {
     hooks: H,
     capacity: Capacity,
     length: AcqRelUsize,
-    buckets: BucketArray<T>,
+    buckets: BucketArray<T, N>,
 }
 
 /// `Vector`
-///
-/// Limitation: the maximum number of buckets cannot be specified, due to the lack of const generics.
 #[cfg(feature = "with-std")]
-pub struct Vector<T, H: VectorHooks = DefaultVectorHooks> {
+pub struct Vector<T, const N: usize = DEFAULT_BUCKETS, H: VectorHooks = DefaultVectorHooks> {
     //  Hooks of the Vector.
     hooks: H,
     //  Capacity of the first bucket.
@@ -44,9 +42,10 @@ pub struct Vector<T, H: VectorHooks = DefaultVectorHooks> {
     //
     //  The Acquire/Release semantics are used to guarantee that when an element is read it reflects the last write.
     length: AcqRelUsize,
-    buckets: BucketArray<T>,
+    buckets: BucketArray<T, N>,
 }
-impl<T, H: VectorHooks + Default> Vector<T, H> {
+
+impl<T, const N: usize, H: VectorHooks + Default> Vector<T, N, H> {
     /// Creates a new instance of the `Vector` with a maximum capacity of 1 for the first bucket.
     ///
     /// No memory is allocated.
@@ -90,7 +89,7 @@ impl<T, H: VectorHooks + Default> Vector<T, H> {
     }
 }
 
-impl<T, H: VectorHooks> Vector<T, H> {
+impl<T, const N: usize, H: VectorHooks> Vector<T, N, H> {
     /// Creates a new instance of the `Vector` with a capacity of 1 for the first bucket.
     ///
     /// No memory is allocated.
@@ -140,7 +139,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
     }
 }
 
-impl<T, H: VectorHooks> Vector<T, H> {
+impl<T, const N: usize, H: VectorHooks> Vector<T, N, H> {
     /// Creates a `VectorReader`.
     ///
     /// A `VectorReader` is a read-only view of the `Vector` instance it is created from which it reflects updates.
@@ -160,7 +159,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
     /// assert_eq!(1, reader[0]);
     /// ```
     pub fn reader(&self) -> VectorReader<'_, T> {
-        VectorReader::new(self.capacity, &self.length, &self.buckets)
+        VectorReader::new(self.capacity, &self.length, self.buckets.as_slice())
     }
 
     /// Creates a `VectorSnapshot`.
@@ -229,7 +228,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
     /// assert_eq!(8, vec.capacity());
     /// ```
     pub fn capacity(&self) -> usize {
-        let number_buckets = self.buckets.number_buckets();
+        let number_buckets = self.buckets.as_slice().number_buckets();
         self.capacity.before_bucket(BucketIndex(number_buckets.0)).0
     }
 
@@ -238,8 +237,8 @@ impl<T, H: VectorHooks> Vector<T, H> {
     /// The maximum capacity depends:
     ///
     /// -   On the capacity of the first bucket, 1 by default.
-    /// -   On the maximum number of buckets, at most 22 in the absence of const generics, but possibly less if the
-    ///     capacity of the first bucket is really large.
+    /// -   On the maximum number of buckets, at most N, but possibly less if the capacity of the first bucket is really
+    ///     large.
     ///
     /// #   Example
     ///
@@ -270,9 +269,9 @@ impl<T, H: VectorHooks> Vector<T, H> {
 
     /// Returns the maximum number of buckets.
     ///
-    /// In general, this method should return 22.
+    /// In general, this method should return N.
     ///
-    /// If the capacity of the first bucket is large enough that having 22 buckets would result in `max_capacity`
+    /// If the capacity of the first bucket is large enough that having N buckets would result in `max_capacity`
     /// overflowing `usize`, then the maximum number of buckets will be just as low as necessary to avoid this fate.
     ///
     /// #   Example
@@ -321,7 +320,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
     /// assert_eq!(1, unsafe { *vec.get_unchecked(0) });
     /// ```
     pub unsafe fn get_unchecked(&self, i: usize) -> &T {
-        self.buckets.get_unchecked(ElementIndex(i), self.capacity)
+        self.buckets.as_slice().get_unchecked(ElementIndex(i), self.capacity)
     }
 
     /// Returns a reference to the ith element, if any.
@@ -645,7 +644,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
         let length = Length(self.length.load());
         //  Safety:
         //  -   length is less than the length of the vector.
-        unsafe { BucketsSharedReader::new(&self.buckets, length, self.capacity) }
+        unsafe { BucketsSharedReader::new(self.buckets.as_slice(), length, self.capacity) }
     }
 
     //  Returns a SharedWriter.
@@ -658,7 +657,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
         //  Safety:
         //  -   length exactly matches the length of the vector.
         //  -   single writer thread.
-        BucketsSharedWriter::new(&self.buckets, length, self.capacity)
+        BucketsSharedWriter::new(self.buckets.as_slice(), length, self.capacity)
     }
 }
 
@@ -707,7 +706,7 @@ impl<T, H: VectorHooks> Vector<T, H> {
 ///
 /// ensure_sync(vec);
 /// ```
-unsafe impl<T: Send, H: VectorHooks + Send> Send for Vector<T, H> {}
+unsafe impl<T: Send, const N: usize, H: VectorHooks + Send> Send for Vector<T, N, H> {}
 
 /// A `Vector<T>` is always safe to use across panics.
 ///
@@ -725,42 +724,42 @@ unsafe impl<T: Send, H: VectorHooks + Send> Send for Vector<T, H> {}
 /// ensure_unwind_safe(vec);
 /// ```
 #[cfg(feature = "with-std")]
-impl<T, H: VectorHooks> std::panic::UnwindSafe for Vector<T, H> {}
+impl<T, const N: usize, H: VectorHooks> std::panic::UnwindSafe for Vector<T, N, H> {}
 
 #[cfg(feature = "with-std")]
-impl<T, H: VectorHooks> std::panic::RefUnwindSafe for Vector<T, H> {}
+impl<T, const N: usize, H: VectorHooks> std::panic::RefUnwindSafe for Vector<T, N, H> {}
 
-impl<T, H: VectorHooks> Drop for Vector<T, H> {
+impl<T, const N: usize, H: VectorHooks> Drop for Vector<T, N, H> {
     fn drop(&mut self) {
         self.clear();
         self.shrink();
     }
 }
 
-impl<T, H: VectorHooks + Default> Default for Vector<T, H> {
+impl<T, const N: usize, H: VectorHooks + Default> Default for Vector<T, N, H> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: fmt::Debug, H: VectorHooks> fmt::Debug for Vector<T, H> {
+impl<T: fmt::Debug, const N: usize, H: VectorHooks> fmt::Debug for Vector<T, N, H> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.shared_reader().debug("Vector", f)
     }
 }
 
-impl<T, H: VectorHooks + Default> iter::FromIterator<T> for Vector<T, H> {
+impl<T, const N: usize, H: VectorHooks + Default> iter::FromIterator<T> for Vector<T, N, H> {
     fn from_iter<C>(collection: C) -> Self
     where
         C: IntoIterator<Item = T>,
     {
-        let result: Vector<_, _> = Vector::with_hooks(H::default());
+        let result: Vector<_, N, _> = Vector::with_hooks(H::default());
         result.extend(collection);
         result
     }
 }
 
-impl<T, H: VectorHooks> ops::Index<usize> for Vector<T, H> {
+impl<T, const N: usize, H: VectorHooks> ops::Index<usize> for Vector<T, N, H> {
     type Output = T;
 
     fn index(&self, index: usize) -> &T {
@@ -768,7 +767,7 @@ impl<T, H: VectorHooks> ops::Index<usize> for Vector<T, H> {
     }
 }
 
-impl<T, H: VectorHooks> ops::IndexMut<usize> for Vector<T, H> {
+impl<T, const N: usize, H: VectorHooks> ops::IndexMut<usize> for Vector<T, N, H> {
     fn index_mut(&mut self, index: usize) -> &mut T {
         self.get_mut(index).expect("Valid index")
     }

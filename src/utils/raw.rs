@@ -41,6 +41,7 @@ impl<T> Raw<T> {
     //
     //  -   Assumes that the value is initialized.
     //  -   Assumes that the caller has exclusive access.
+    #[allow(clippy::mut_from_ref)]
     pub unsafe fn get_unchecked_mut(&self) -> &mut T {
         //  Safety:
         //  -   The caller has exclusive access, per pre-condition.
@@ -81,10 +82,14 @@ impl<T> Raw<T> {
     //  #   Warning
     //
     //  Does not drop the former value, if any.
-    pub fn write(&mut self, value: T) {
+    //
+    //  #   Safety
+    //
+    //  -   Assumes exclusive access for the duration of the call.
+    pub unsafe fn write(&self, value: T) {
         //  Safety:
-        //  -   Exclusive access, due to &mut self.
-        unsafe { ptr::write(self.as_mut_ptr(), value) };
+        //  -   Exclusive access, per pre-condition.
+        unsafe { ptr::write(self.as_unchecked_mut_ptr(), value) };
     }
 
     //  Drops the value within.
@@ -115,6 +120,7 @@ impl<T> Raw<T> {
     //  #   Safety
     //
     //  -   Assumes that the caller has exclusive access.
+    #[allow(clippy::mut_from_ref)]
     unsafe fn maybe_unchecked_mut(&self) -> &mut mem::MaybeUninit<T> {
         #![deny(unsafe_op_in_unsafe_fn)]
 
