@@ -18,22 +18,25 @@ use super::hashcore::DefaultHashHooks;
 //  Public Interface
 //
 
+/// Default number of buckets.
+pub use crate::hashcore::buckets::DEFAULT_BUCKETS;
+
 /// `HashMap`
 ///
 /// Limitation: the maximum number of buckets cannot be specified, due to the lack of const generics.
 #[cfg(not(feature = "with-std"))]
-pub struct HashMap<K, V, H: HashHooks> {
+pub struct HashMap<K, V, const N: usize, H: HashHooks> {
     hooks: H,
     capacity: Capacity,
     size: AcqRelUsize,
-    buckets: BucketArray<Entry<K, V>>,
+    buckets: BucketArray<Entry<K, V>, N>,
 }
 
 /// `HashMap`
 ///
 /// Limitation: the maximum number of buckets cannot be specified, due to the lack of const generics.
 #[cfg(feature = "with-std")]
-pub struct HashMap<K, V, H: HashHooks = DefaultHashHooks> {
+pub struct HashMap<K, V, const N: usize = DEFAULT_BUCKETS, H: HashHooks = DefaultHashHooks> {
     //  Hooks of the HashMap.
     hooks: H,
     //  Capacity of the first bucket.
@@ -45,10 +48,10 @@ pub struct HashMap<K, V, H: HashHooks = DefaultHashHooks> {
     //
     //  The Acquire/Release semantics are used to guarantee that when an element is read it reflects the last write.
     size: AcqRelUsize,
-    buckets: BucketArray<Entry<K, V>>,
+    buckets: BucketArray<Entry<K, V>, N>,
 }
 
-impl<K, V, H: HashHooks + Default> HashMap<K, V, H> {
+impl<K, V, const N: usize, H: HashHooks + Default> HashMap<K, V, N, H> {
     /// Creates a new instance of the `HashMap` with a maximum capacity of 2 for the first bucket.
     ///
     /// No memory is allocated.
@@ -92,7 +95,7 @@ impl<K, V, H: HashHooks + Default> HashMap<K, V, H> {
     }
 }
 
-impl<K, V, H: HashHooks> HashMap<K, V, H> {
+impl<K, V, const N: usize, H: HashHooks> HashMap<K, V, N, H> {
     /// Creates a new instance of the `HashMap` with a capacity of 2 for the first bucket.
     ///
     /// No memory is allocated.
@@ -135,14 +138,14 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     pub fn with_max_capacity_and_hooks(capacity_of_0: usize, hooks: H) -> Self {
         Self {
             hooks,
-            capacity: BucketArray::<Entry<K, V>>::capacity(capacity_of_0),
+            capacity: BucketArray::<Entry<K, V>, N>::capacity(capacity_of_0),
             size: AcqRelUsize::new(0),
             buckets: Default::default(),
         }
     }
 }
 
-impl<K, V, H: HashHooks> HashMap<K, V, H> {
+impl<K, V, const N: usize, H: HashHooks> HashMap<K, V, N, H> {
     /// Creates a `HashMapReader`.
     ///
     /// A `HashMapReader` is a read-only view of the `HashMap` instance it is created from which it reflects updates.
@@ -162,7 +165,7 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// assert_eq!(Some(&false), reader.get(&1));
     /// ```
     pub fn reader(&self) -> HashMapReader<'_, K, V, H> {
-        HashMapReader::new(&self.buckets, &self.hooks, &self.size, self.capacity)
+        HashMapReader::new(self.buckets.as_slice(), &self.hooks, &self.size, self.capacity)
     }
 
     /// Creates a `HashMapSnapshot`.
@@ -231,7 +234,7 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
     /// assert_eq!(8, map.capacity());
     /// ```
     pub fn capacity(&self) -> usize {
-        let number_buckets = self.buckets.number_buckets();
+        let number_buckets = self.buckets.as_slice().number_buckets();
         let capacity = self.capacity.before_bucket(BucketIndex(number_buckets.0)).0;
 
         //  Load 50%
@@ -650,7 +653,7 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
         let size = Size(self.size.load());
         //  Safety:
         //  -   `size` is less than the size of the collection.
-        unsafe { BucketsSharedReader::new(&self.buckets, &self.hooks, size, self.capacity) }
+        unsafe { BucketsSharedReader::new(self.buckets.as_slice(), &self.hooks, size, self.capacity) }
     }
 
     //  Returns a SharedWriter.
@@ -663,7 +666,7 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
         //  Safety:
         //  -   `size` exactly matches the size of the collection.
         //  -   single writer thread.
-        BucketsSharedWriter::new(&self.buckets, &self.hooks, size, self.capacity)
+        BucketsSharedWriter::new(self.buckets.as_slice(), &self.hooks, size, self.capacity)
     }
 }
 
@@ -727,7 +730,7 @@ impl<K, V, H: HashHooks> HashMap<K, V, H> {
 ///
 /// ensure_sync(map);
 /// ```
-unsafe impl<K: Send, V: Send, H: HashHooks + Send> Send for HashMap<K, V, H> {}
+unsafe impl<K: Send, V: Send, const N: usize, H: HashHooks + Send> Send for HashMap<K, V, N, H> {}
 
 /// A `HashMap<K, V>` is always safe to use across panics.
 ///
@@ -745,31 +748,31 @@ unsafe impl<K: Send, V: Send, H: HashHooks + Send> Send for HashMap<K, V, H> {}
 /// ensure_unwind_safe(map);
 /// ```
 #[cfg(feature = "with-std")]
-impl<K, V, H: HashHooks> std::panic::UnwindSafe for HashMap<K, V, H> {}
+impl<K, V, const N: usize, H: HashHooks> std::panic::UnwindSafe for HashMap<K, V, N, H> {}
 
 #[cfg(feature = "with-std")]
-impl<K, V, H: HashHooks> std::panic::RefUnwindSafe for HashMap<K, V, H> {}
+impl<K, V, const N: usize, H: HashHooks> std::panic::RefUnwindSafe for HashMap<K, V, N, H> {}
 
-impl<K, V, H: HashHooks> Drop for HashMap<K, V, H> {
+impl<K, V, const N: usize, H: HashHooks> Drop for HashMap<K, V, N, H> {
     fn drop(&mut self) {
         self.clear();
         self.shrink();
     }
 }
 
-impl<K, V, H: HashHooks + Default> Default for HashMap<K, V, H> {
+impl<K, V, const N: usize, H: HashHooks + Default> Default for HashMap<K, V, N, H> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<K: fmt::Debug, V: fmt::Debug, H: HashHooks> fmt::Debug for HashMap<K, V, H> {
+impl<K: fmt::Debug, V: fmt::Debug, const N: usize, H: HashHooks> fmt::Debug for HashMap<K, V, N, H> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.shared_reader().debug("HashMap", f)
     }
 }
 
-impl<K, V, H> iter::FromIterator<(K, V)> for HashMap<K, V, H>
+impl<K, V, const N: usize, H> iter::FromIterator<(K, V)> for HashMap<K, V, N, H>
 where
     K: Eq + hash::Hash,
     H: HashHooks + Default,
@@ -778,7 +781,7 @@ where
     where
         C: IntoIterator<Item = (K, V)>,
     {
-        let result: HashMap<_, _, _> = HashMap::with_hooks(H::default());
+        let result: HashMap<_, _, N, _> = HashMap::with_hooks(H::default());
         result.extend(collection);
         result
     }

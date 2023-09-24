@@ -1,6 +1,6 @@
 //! The high-level API of the Buckets of the HashMap and HashSet.
 
-pub use super::buckets::BucketArray;
+pub use super::buckets::{BucketArray, BucketSlice, DEFAULT_BUCKETS};
 
 use super::root::{borrow, fmt, hash, iter};
 
@@ -15,7 +15,7 @@ use self::borrow::Borrow;
 
 //  Shared Reader
 pub struct BucketsSharedReader<'a, T, H> {
-    buckets: &'a BucketArray<T>,
+    buckets: BucketSlice<'a, T>,
     hook: &'a H,
     size: Size,
     capacity: Capacity,
@@ -27,7 +27,7 @@ impl<'a, T, H> BucketsSharedReader<'a, T, H> {
     //  #   Safety
     //
     //  -   Assumes that `size` is less than the current size.
-    pub unsafe fn new(buckets: &'a BucketArray<T>, hook: &'a H, size: Size, capacity: Capacity) -> Self {
+    pub unsafe fn new(buckets: BucketSlice<'a, T>, hook: &'a H, size: Size, capacity: Capacity) -> Self {
         Self {
             buckets,
             hook,
@@ -157,6 +157,7 @@ where
         write!(f, "] }}")
     }
 }
+
 impl<'a, T, H> fmt::Debug for BucketsSharedReader<'a, T, H>
 where
     T: fmt::Debug,
@@ -200,7 +201,7 @@ impl<'a, T, H> iter::IntoIterator for BucketsSharedReader<'a, T, H> {
 
 //  Shared Writer
 pub struct BucketsSharedWriter<'a, T, H> {
-    buckets: &'a BucketArray<T>,
+    buckets: BucketSlice<'a, T>,
     hook: &'a H,
     size: Size,
     capacity: Capacity,
@@ -213,7 +214,7 @@ impl<'a, T, H> BucketsSharedWriter<'a, T, H> {
     //
     //  -   Assumes that `size` exactly matches the current size.
     //  -   Assumes a single writer thread.
-    pub unsafe fn new(buckets: &'a BucketArray<T>, hook: &'a H, size: Size, capacity: Capacity) -> Self {
+    pub unsafe fn new(buckets: BucketSlice<'a, T>, hook: &'a H, size: Size, capacity: Capacity) -> Self {
         Self {
             buckets,
             hook,
@@ -291,19 +292,19 @@ impl<'a, T, H> BucketsSharedWriter<'a, T, H> {
 }
 
 //  Exclusive Writer
-pub struct BucketsExclusiveWriter<'a, T> {
-    buckets: &'a mut BucketArray<T>,
+pub struct BucketsExclusiveWriter<'a, T, const N: usize> {
+    buckets: &'a mut BucketArray<T, N>,
     size: Size,
     capacity: Capacity,
 }
 
-impl<'a, T> BucketsExclusiveWriter<'a, T> {
+impl<'a, T, const N: usize> BucketsExclusiveWriter<'a, T, N> {
     //  Creates a new instance.
     //
     //  #   Safety
     //
     //  -   Assumes that `size` exactly matches the current size.
-    pub unsafe fn new(buckets: &'a mut BucketArray<T>, size: Size, capacity: Capacity) -> Self {
+    pub unsafe fn new(buckets: &'a mut BucketArray<T, N>, size: Size, capacity: Capacity) -> Self {
         Self {
             buckets,
             size,
@@ -326,7 +327,7 @@ impl<'a, T> BucketsExclusiveWriter<'a, T> {
 ///
 /// Due to the jagged nature of the Vector, it may be less efficient than a BucketIterator.
 pub struct ElementIterator<'a, T> {
-    buckets: &'a BucketArray<T>,
+    buckets: BucketSlice<'a, T>,
     generation: Generation,
     capacity: Capacity,
     index: BucketIndex,
@@ -404,12 +405,12 @@ impl<'a, T> iter::Iterator for ElementIterator<'a, T> {
 #[cfg(test)]
 mod tests {
 
-    use super::super::buckets::MAX_BUCKETS;
+    use super::super::buckets::DEFAULT_BUCKETS;
     use super::*;
 
     use crate::utils::tester::*;
 
-    fn construct<T, C, H>(collection: C, capacity: Capacity, hooks: &H) -> (Size, BucketArray<T>)
+    fn construct<T, const N: usize, C, H>(collection: C, capacity: Capacity, hooks: &H) -> (Size, BucketArray<T, N>)
     where
         T: Key,
         T::Key: Eq + hash::Hash,
@@ -418,36 +419,36 @@ mod tests {
     {
         let buckets = BucketArray::default();
 
-        let (size, failure) = unsafe { buckets.try_extend(collection, Size(0), capacity, hooks) };
+        let (size, failure) = unsafe { buckets.as_slice().try_extend(collection, Size(0), capacity, hooks) };
 
         assert_eq!(None, failure);
 
         (size, buckets)
     }
 
-    unsafe fn shared_reader<'a, T, H>(
-        buckets: &'a BucketArray<T>,
+    unsafe fn shared_reader<'a, T, const N: usize, H>(
+        buckets: &'a BucketArray<T, N>,
         hooks: &'a H,
         size: Size,
         capacity: Capacity,
     ) -> BucketsSharedReader<'a, T, H> {
-        BucketsSharedReader::new(buckets, hooks, size, capacity)
+        BucketsSharedReader::new(buckets.as_slice(), hooks, size, capacity)
     }
 
-    unsafe fn shared_writer<'a, T, H>(
-        buckets: &'a BucketArray<T>,
+    unsafe fn shared_writer<'a, T, const N: usize, H>(
+        buckets: &'a BucketArray<T, N>,
         hooks: &'a H,
         size: Size,
         capacity: Capacity,
     ) -> BucketsSharedWriter<'a, T, H> {
-        BucketsSharedWriter::new(buckets, hooks, size, capacity)
+        BucketsSharedWriter::new(buckets.as_slice(), hooks, size, capacity)
     }
 
-    unsafe fn exclusive_writer<T>(
-        buckets: &mut BucketArray<T>,
+    unsafe fn exclusive_writer<T, const N: usize>(
+        buckets: &mut BucketArray<T, N>,
         size: Size,
         capacity: Capacity,
-    ) -> BucketsExclusiveWriter<'_, T> {
+    ) -> BucketsExclusiveWriter<'_, T, N> {
         BucketsExclusiveWriter::new(buckets, size, capacity)
     }
 
@@ -457,7 +458,7 @@ mod tests {
 
         let hooks = TestHooks::unlimited();
 
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         let (_, buckets) = construct(vec!["Hello".to_string()], capacity, &hooks);
 
@@ -466,7 +467,7 @@ mod tests {
             ensure_copy(reader);
         }
 
-        let mut buckets = buckets;
+        let mut buckets: BucketArray<_, DEFAULT_BUCKETS> = buckets;
         unsafe { buckets.clear(Size(1), capacity) };
     }
 
@@ -474,9 +475,9 @@ mod tests {
     fn reader_properties() {
         let hooks = TestHooks::unlimited();
 
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
-        let (size, buckets) = construct(vec![1], capacity, &hooks);
+        let (size, buckets): (_, BucketArray<_, DEFAULT_BUCKETS>) = construct(vec![1], capacity, &hooks);
 
         let reader = unsafe { shared_reader(&buckets, &hooks, Size(0), capacity) };
         assert!(reader.is_empty());
@@ -485,7 +486,7 @@ mod tests {
 
         assert_eq!(0, reader.capacity());
         assert_eq!(512 * 1024, reader.max_capacity());
-        assert_eq!(MAX_BUCKETS, reader.max_buckets());
+        assert_eq!(DEFAULT_BUCKETS, reader.max_buckets());
 
         let reader = unsafe { shared_reader(&buckets, &hooks, size, capacity) };
         assert!(!reader.is_empty());
@@ -494,16 +495,16 @@ mod tests {
 
         assert_eq!(1, reader.capacity());
         assert_eq!(512 * 1024, reader.max_capacity());
-        assert_eq!(MAX_BUCKETS, reader.max_buckets());
+        assert_eq!(DEFAULT_BUCKETS, reader.max_buckets());
     }
 
     #[test]
     fn reader_contains_key() {
         let hooks = TestHooks::unlimited();
 
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
-        let (size, buckets) = construct(vec![1, 3, 5], capacity, &hooks);
+        let (size, buckets): (_, BucketArray<_, DEFAULT_BUCKETS>) = construct(vec![1, 3, 5], capacity, &hooks);
 
         let reader = unsafe { shared_reader(&buckets, &hooks, Size(2), capacity) };
 
@@ -522,9 +523,9 @@ mod tests {
     fn reader_get() {
         let hooks = TestHooks::unlimited();
 
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
-        let (size, buckets) = construct(vec![1, 3, 5], capacity, &hooks);
+        let (size, buckets): (_, BucketArray<_, DEFAULT_BUCKETS>) = construct(vec![1, 3, 5], capacity, &hooks);
 
         let reader = unsafe { shared_reader(&buckets, &hooks, Size(2), capacity) };
 
@@ -543,9 +544,9 @@ mod tests {
     fn reader_debug() {
         let hooks = TestHooks::unlimited();
 
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
-        let (_, buckets) = construct(vec![1, 3, 5], capacity, &hooks);
+        let (_, buckets): (_, BucketArray<_, DEFAULT_BUCKETS>) = construct(vec![1, 3, 5], capacity, &hooks);
 
         let reader = unsafe { shared_reader(&buckets, &hooks, Size(2), capacity) };
 
@@ -570,10 +571,10 @@ mod tests {
 
         let hooks = TestHooks::unlimited();
 
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
         let vec = vec![Partial(1, 1.0), Partial(2, 2.0), Partial(3, f32::NAN)];
-        let (_, buckets) = construct(vec, capacity, &hooks);
+        let (_, buckets): (_, BucketArray<_, DEFAULT_BUCKETS>) = construct(vec, capacity, &hooks);
 
         let left = unsafe { shared_reader(&buckets, &hooks, Size(1), capacity) };
         let right = unsafe { shared_reader(&buckets, &hooks, Size(2), capacity) };
@@ -595,9 +596,9 @@ mod tests {
     fn reader_iter_elements() {
         let hooks = TestHooks::unlimited();
 
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
-        let (_, buckets) = construct(vec![1, 2, 3, 4, 5, 6], capacity, &hooks);
+        let (_, buckets): (_, BucketArray<_, DEFAULT_BUCKETS>) = construct(vec![1, 2, 3, 4, 5, 6], capacity, &hooks);
 
         {
             let reader = unsafe { shared_reader(&buckets, &hooks, Size(0), capacity) };
@@ -625,9 +626,9 @@ mod tests {
     fn writer_shrink() {
         let hooks = TestHooks::unlimited();
 
-        let capacity = Capacity::new(1, MAX_BUCKETS);
+        let capacity = Capacity::new(1, DEFAULT_BUCKETS);
 
-        let (size, mut buckets) = construct(1..7, capacity, &hooks);
+        let (size, mut buckets): (_, BucketArray<_, DEFAULT_BUCKETS>) = construct(1..7, capacity, &hooks);
 
         {
             let writer = unsafe { shared_writer(&buckets, &hooks, size, capacity) };
@@ -650,9 +651,9 @@ mod tests {
     fn writer_try_reserve() {
         let hooks = TestHooks::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
-        let (size, buckets) = construct(0..5, capacity, &hooks);
+        let (size, buckets): (_, BucketArray<_, DEFAULT_BUCKETS>) = construct(0..5, capacity, &hooks);
 
         let writer = unsafe { shared_writer(&buckets, &hooks, size, capacity) };
 
@@ -664,9 +665,9 @@ mod tests {
     fn writer_try_insert() {
         let hooks = TestHooks::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
-        let (size, buckets) = construct(0..5, capacity, &hooks);
+        let (size, buckets): (_, BucketArray<_, DEFAULT_BUCKETS>) = construct(0..5, capacity, &hooks);
 
         let writer = unsafe { shared_writer(&buckets, &hooks, size, capacity) };
 
@@ -683,9 +684,9 @@ mod tests {
     fn writer_try_extend() {
         let hooks = TestHooks::new(5);
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
-        let (size, buckets) = construct(0..5, capacity, &hooks);
+        let (size, buckets): (_, BucketArray<_, DEFAULT_BUCKETS>) = construct(0..5, capacity, &hooks);
 
         let writer = unsafe { shared_writer(&buckets, &hooks, size, capacity) };
 
@@ -698,10 +699,10 @@ mod tests {
     fn exclusive_clear() {
         let hooks = TestHooks::unlimited();
 
-        let capacity = Capacity::new(2, MAX_BUCKETS);
+        let capacity = Capacity::new(2, DEFAULT_BUCKETS);
 
         let items = vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let (size, mut buckets) = construct(items, capacity, &hooks);
+        let (size, mut buckets): (_, BucketArray<_, DEFAULT_BUCKETS>) = construct(items, capacity, &hooks);
 
         let writer = unsafe { exclusive_writer(&mut buckets, size, capacity) };
         writer.clear();

@@ -9,7 +9,7 @@ use super::HashSetSnapshot;
 
 use super::atomic::AcqRelUsize;
 use super::entry::Entry;
-use super::hashcore::buckets_api::{BucketArray, BucketsSharedReader};
+use super::hashcore::buckets_api::{BucketSlice, BucketsSharedReader};
 use super::hashcore::capacity::{Capacity, Size};
 use super::hashcore::HashHooks;
 
@@ -19,7 +19,7 @@ use super::hashcore::HashHooks;
 ///
 /// It always reflects updates to the underlying instance.
 pub struct HashSetReader<'a, T, H> {
-    buckets: &'a BucketArray<Entry<T>>,
+    buckets: BucketSlice<'a, Entry<T>>,
     hooks: &'a H,
     size: &'a AcqRelUsize,
     capacity: Capacity,
@@ -28,7 +28,7 @@ pub struct HashSetReader<'a, T, H> {
 impl<'a, T, H> HashSetReader<'a, T, H> {
     //  Creates a new instance.
     pub(crate) fn new(
-        buckets: &'a BucketArray<Entry<T>>,
+        buckets: BucketSlice<'a, Entry<T>>,
         hooks: &'a H,
         size: &'a AcqRelUsize,
         capacity: Capacity,

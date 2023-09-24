@@ -18,22 +18,25 @@ use super::hashcore::DefaultHashHooks;
 //  Public Interface
 //
 
+/// Default number of buckets.
+pub use crate::hashcore::buckets::DEFAULT_BUCKETS;
+
 /// `HashSet`
 ///
 /// Limitation: the maximum number of buckets cannot be specified, due to the lack of const generics.
 #[cfg(not(feature = "with-std"))]
-pub struct HashSet<T, H: HashHooks> {
+pub struct HashSet<T, const N: usize, H: HashHooks> {
     hooks: H,
     capacity: Capacity,
     size: AcqRelUsize,
-    buckets: BucketArray<Entry<T>>,
+    buckets: BucketArray<Entry<T>, N>,
 }
 
 /// `HashSet`
 ///
 /// Limitation: the maximum number of buckets cannot be specified, due to the lack of const generics.
 #[cfg(feature = "with-std")]
-pub struct HashSet<T, H: HashHooks = DefaultHashHooks> {
+pub struct HashSet<T, const N: usize = DEFAULT_BUCKETS, H: HashHooks = DefaultHashHooks> {
     //  Hooks of the HashSet.
     hooks: H,
     //  Capacity of the first bucket.
@@ -46,10 +49,10 @@ pub struct HashSet<T, H: HashHooks = DefaultHashHooks> {
     //  The Acquire/Release semantics are used to guarantee that when an element
     //  is read it reflects the last write.
     size: AcqRelUsize,
-    buckets: BucketArray<Entry<T>>,
+    buckets: BucketArray<Entry<T>, N>,
 }
 
-impl<T, H: HashHooks + Default> HashSet<T, H> {
+impl<T, const N: usize, H: HashHooks + Default> HashSet<T, N, H> {
     /// Creates a new instance of the `HashSet` with a maximum capacity of 2 for the first bucket.
     ///
     /// No memory is allocated.
@@ -93,7 +96,7 @@ impl<T, H: HashHooks + Default> HashSet<T, H> {
     }
 }
 
-impl<T, H: HashHooks> HashSet<T, H> {
+impl<T, const N: usize, H: HashHooks> HashSet<T, N, H> {
     /// Creates a new instance of the `HashSet` with a capacity of 2 for the first bucket.
     ///
     /// No memory is allocated.
@@ -136,14 +139,14 @@ impl<T, H: HashHooks> HashSet<T, H> {
     pub fn with_max_capacity_and_hooks(capacity_of_0: usize, hooks: H) -> Self {
         Self {
             hooks,
-            capacity: BucketArray::<Entry<T>>::capacity(capacity_of_0),
+            capacity: BucketArray::<Entry<T>, N>::capacity(capacity_of_0),
             size: AcqRelUsize::new(0),
             buckets: Default::default(),
         }
     }
 }
 
-impl<T, H: HashHooks> HashSet<T, H> {
+impl<T, const N: usize, H: HashHooks> HashSet<T, N, H> {
     /// Creates a `HashSetReader`.
     ///
     /// A `HashSetReader` is a read-only view of the `HashSet` instance it is created from which it reflects updates.
@@ -163,7 +166,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
     /// assert_eq!(Some(&1), reader.get(&1));
     /// ```
     pub fn reader(&self) -> HashSetReader<'_, T, H> {
-        HashSetReader::new(&self.buckets, &self.hooks, &self.size, self.capacity)
+        HashSetReader::new(self.buckets.as_slice(), &self.hooks, &self.size, self.capacity)
     }
 
     /// Creates a `HashSetSnapshot`.
@@ -232,7 +235,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
     /// assert_eq!(8, set.capacity());
     /// ```
     pub fn capacity(&self) -> usize {
-        let number_buckets = self.buckets.number_buckets();
+        let number_buckets = self.buckets.as_slice().number_buckets();
         let capacity = self.capacity.before_bucket(BucketIndex(number_buckets.0)).0;
 
         //  Load 50%
@@ -605,7 +608,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
         let size = Size(self.size.load());
         //  Safety:
         //  -   `size` is less than the size of the collection.
-        unsafe { BucketsSharedReader::new(&self.buckets, &self.hooks, size, self.capacity) }
+        unsafe { BucketsSharedReader::new(self.buckets.as_slice(), &self.hooks, size, self.capacity) }
     }
 
     //  Returns a SharedWriter.
@@ -618,7 +621,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
         //  Safety:
         //  -   `size` exactly matches the size of the collection.
         //  -   single writer thread.
-        BucketsSharedWriter::new(&self.buckets, &self.hooks, size, self.capacity)
+        BucketsSharedWriter::new(self.buckets.as_slice(), &self.hooks, size, self.capacity)
     }
 }
 
@@ -667,7 +670,7 @@ impl<T, H: HashHooks> HashSet<T, H> {
 ///
 /// ensure_sync(set);
 /// ```
-unsafe impl<T: Send, H: HashHooks + Send> Send for HashSet<T, H> {}
+unsafe impl<T: Send, const N: usize, H: HashHooks + Send> Send for HashSet<T, N, H> {}
 
 /// A `HashSet<K, V>` is always safe to use across panics.
 ///
@@ -685,31 +688,31 @@ unsafe impl<T: Send, H: HashHooks + Send> Send for HashSet<T, H> {}
 /// ensure_unwind_safe(set);
 /// ```
 #[cfg(feature = "with-std")]
-impl<T, H: HashHooks> std::panic::UnwindSafe for HashSet<T, H> {}
+impl<T, const N: usize, H: HashHooks> std::panic::UnwindSafe for HashSet<T, N, H> {}
 
 #[cfg(feature = "with-std")]
-impl<T, H: HashHooks> std::panic::RefUnwindSafe for HashSet<T, H> {}
+impl<T, const N: usize, H: HashHooks> std::panic::RefUnwindSafe for HashSet<T, N, H> {}
 
-impl<T, H: HashHooks> Drop for HashSet<T, H> {
+impl<T, const N: usize, H: HashHooks> Drop for HashSet<T, N, H> {
     fn drop(&mut self) {
         self.clear();
         self.shrink();
     }
 }
 
-impl<T, H: HashHooks + Default> Default for HashSet<T, H> {
+impl<T, const N: usize, H: HashHooks + Default> Default for HashSet<T, N, H> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: fmt::Debug, H: HashHooks> fmt::Debug for HashSet<T, H> {
+impl<T: fmt::Debug, const N: usize, H: HashHooks> fmt::Debug for HashSet<T, N, H> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.shared_reader().debug("HashSet", f)
     }
 }
 
-impl<T, H> iter::FromIterator<T> for HashSet<T, H>
+impl<T, const N: usize, H> iter::FromIterator<T> for HashSet<T, N, H>
 where
     T: Eq + hash::Hash,
     H: HashHooks + Default,
@@ -718,7 +721,7 @@ where
     where
         C: IntoIterator<Item = T>,
     {
-        let result: HashSet<_, _> = HashSet::with_hooks(H::default());
+        let result: HashSet<_, N, _> = HashSet::with_hooks(H::default());
         result.extend(collection);
         result
     }
