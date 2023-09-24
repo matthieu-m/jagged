@@ -59,7 +59,7 @@ impl<T> Raw<T> {
     //
     //  The value may not be initialized.
     pub fn as_mut_ptr(&mut self) -> *mut T {
-        self.maybe_mut().as_mut_ptr()
+        self.0.get_mut().as_mut_ptr()
     }
 
     //  Gets a mutable pointer to the value from a shared reference.
@@ -106,13 +106,6 @@ impl<T> Raw<T> {
         //  Safety:
         //  -   Shared access, per &self.
         unsafe { &*self.0.get() }
-    }
-
-    //  Gets a mutable to the MaybeUninit field.
-    fn maybe_mut(&mut self) -> &mut mem::MaybeUninit<T> {
-        //  Safety:
-        //  -   Exclusive access, per &mut self.
-        unsafe { &mut *self.0.get() }
     }
 
     //  Gets a mutable to the MaybeUninit field.
