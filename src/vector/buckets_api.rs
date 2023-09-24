@@ -75,10 +75,12 @@ impl<'a, T> BucketsSharedReader<'a, T> {
     //
     //  -   Assumes that `index` is less than the `self.len()`
     pub unsafe fn get_unchecked(&self, index: ElementIndex) -> &'a T {
+        debug_assert!(index.0 < self.length.0);
+
         //  Safety:
-        //  -   `index` is less than `length`.
-        //  -   `length` is less than the current length of the vector.
-        self.buckets.get_unchecked(index, self.capacity)
+        //  -   `index` is less than `length` and `length` is less than the current length of the vector.
+        //  -   `self.capacity` is the capacity of the vector.
+        unsafe { self.buckets.get_unchecked(index, self.capacity) }
     }
 
     //  Returns a slice comprising the initialized part of the Bucket.
@@ -523,7 +525,7 @@ mod tests {
         length: Length,
         capacity: Capacity,
     ) -> BucketsSharedReader<'_, T> {
-        BucketsSharedReader::new(buckets.as_slice(), length, capacity)
+        unsafe { BucketsSharedReader::new(buckets.as_slice(), length, capacity) }
     }
 
     unsafe fn shared_writer<T>(
@@ -531,7 +533,7 @@ mod tests {
         length: Length,
         capacity: Capacity,
     ) -> BucketsSharedWriter<'_, T> {
-        BucketsSharedWriter::new(buckets.as_slice(), length, capacity)
+        unsafe { BucketsSharedWriter::new(buckets.as_slice(), length, capacity) }
     }
 
     unsafe fn exclusive_writer<T, const N: usize>(
@@ -539,7 +541,7 @@ mod tests {
         length: Length,
         capacity: Capacity,
     ) -> BucketsExclusiveWriter<'_, T, N> {
-        BucketsExclusiveWriter::new(buckets, length, capacity)
+        unsafe { BucketsExclusiveWriter::new(buckets, length, capacity) }
     }
 
     #[test]

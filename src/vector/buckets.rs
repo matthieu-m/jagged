@@ -35,7 +35,9 @@ impl<T, const N: usize> BucketArray<T, N> {
         if index.0 >= length.0 {
             None
         } else {
-            Some(self.get_unchecked_mut(index, capacity))
+            //  Safety:
+            //  -   The index is less than the current length of the vector, as per branch.
+            Some(unsafe { self.get_unchecked_mut(index, capacity) })
         }
     }
 
@@ -48,12 +50,12 @@ impl<T, const N: usize> BucketArray<T, N> {
         let (bucket, inner) = capacity.indexes(index);
 
         //  Safety:
-        //  -   bucket is within bounds.
-        let bucket = self.0.get_unchecked_mut(bucket.0);
+        //  -   `bucket` is within bounds, since `index` is within bounds per pre-condition.
+        let bucket = unsafe { self.0.get_unchecked_mut(bucket.0) };
 
         //  Safety:
-        //  -   inner is within bounds.
-        bucket.get_unchecked_mut(inner)
+        //  -   `inner` is within bounds, since `index` is within bounds per pre-condition.
+        unsafe { bucket.get_unchecked_mut(inner) }
     }
 
     //  Clears the buckets.
@@ -70,16 +72,16 @@ impl<T, const N: usize> BucketArray<T, N> {
 
         for index in 0..nb_buckets.0 {
             //  Safety:
-            //  -   index is assumed to be within bounds.
-            let bucket = self.0.get_unchecked_mut(index);
+            //  -   `index` is within bounds, since less than `nb_buckets`.
+            let bucket = unsafe { self.0.get_unchecked_mut(index) };
             let index = BucketIndex(index);
 
             let length = bucket_properties(index, length, capacity).0;
             total += length.0;
 
             //  Safety:
-            //  -   The first length elements are initialized.
-            bucket.clear(length);
+            //  -   The first `length` elements are initialized, per pre-condition.
+            unsafe { bucket.clear(length) };
         }
 
         debug_assert!(length.0 == total);
@@ -104,13 +106,12 @@ impl<T, const N: usize> BucketArray<T, N> {
 
         //  Safety:
         //  -   The index is guaranteed to be within bounds.
-        let bucket = self.0.get_unchecked_mut(bucket.0);
+        let bucket = unsafe { self.0.get_unchecked_mut(bucket.0) };
 
         //  Safety:
-        //  -   The first `bucket_length` elements are initialized, due to
-        //      `length` being less than the length of the vector, and
-        //      `capacity` matching that of the vector.
-        bucket.get_initialized_slice_mut(bucket_length)
+        //  -   The first `bucket_length` elements are initialized, due to `length` being less than the length of the
+        //      vector, and `capacity` matching that of the vector.
+        unsafe { bucket.get_initialized_slice_mut(bucket_length) }
     }
 }
 
@@ -152,7 +153,9 @@ impl<'a, T> BucketSlice<'a, T> {
         if index.0 >= length.0 {
             None
         } else {
-            Some(self.get_unchecked(index, capacity))
+            //  Safety:
+            //  -   `index` is initialized, per invariant than `length` elements are initialized & pre-condition.
+            Some(unsafe { self.get_unchecked(index, capacity) })
         }
     }
 
@@ -166,11 +169,11 @@ impl<'a, T> BucketSlice<'a, T> {
 
         //  Safety:
         //  -   bucket is within bounds.
-        let bucket = self.0.get_unchecked(bucket.0);
+        let bucket = unsafe { self.0.get_unchecked(bucket.0) };
 
         //  Safety:
         //  -   inner is within bounds.
-        bucket.get_unchecked(inner)
+        unsafe { bucket.get_unchecked(inner) }
     }
 
     //  Shrinks the buckets, releasing unused memory.
@@ -192,12 +195,12 @@ impl<'a, T> BucketSlice<'a, T> {
             let capacity = capacity.of_bucket(index);
 
             //  Safety:
-            //  -   The index is within bounds.
-            let bucket = self.0.get_unchecked(index.0);
+            //  -   `index` is within bounds.
+            let bucket = unsafe { self.0.get_unchecked(index.0) };
 
             //  Safety:
-            //  -   The capacity matches the bucket capacity.
-            bucket.deallocate(capacity, allocator);
+            //  -   `capacity` matches the bucket capacity.
+            unsafe { bucket.deallocate(capacity, allocator) };
         }
     }
 
@@ -225,7 +228,9 @@ impl<'a, T> BucketSlice<'a, T> {
         let target = capacity.number_buckets(total);
 
         while nb_buckets < target {
-            nb_buckets = self.push_bucket(nb_buckets, capacity, allocator)?;
+            //  Safety:
+            //  -   Single writer thread, per pre-condition.
+            nb_buckets = unsafe { self.push_bucket(nb_buckets, capacity, allocator)? };
         }
 
         Ok(())
@@ -251,7 +256,9 @@ impl<'a, T> BucketSlice<'a, T> {
         let mut nb_buckets = capacity.number_buckets(length);
 
         if length.0 == capacity.before_bucket(BucketIndex(nb_buckets.0)).0 {
-            nb_buckets = self.push_bucket(nb_buckets, capacity, allocator)?;
+            //  Safety:
+            //  -   Single writer thread, per pre-condition.
+            nb_buckets = unsafe { self.push_bucket(nb_buckets, capacity, allocator)? };
         }
 
         debug_assert!(nb_buckets.0 > 0);
@@ -262,12 +269,12 @@ impl<'a, T> BucketSlice<'a, T> {
         //  Safety:
         //  -   index is within bounds.
         //  -   length is assumed to match the current length of the vector.
-        let bucket = self.uninitialized_bucket(index, length, capacity);
+        let bucket = unsafe { self.uninitialized_bucket(index, length, capacity) };
         debug_assert!(!bucket.is_empty());
 
         //  Safety:
         //  -   bucket is not empty.
-        let raw = bucket.get_unchecked(0);
+        let raw = unsafe { bucket.get_unchecked(0) };
 
         //  Safety:
         //  -   Exclusive access for the duration of the call, per pre-condition of a single writer thread.
@@ -309,7 +316,13 @@ impl<'a, T> BucketSlice<'a, T> {
 
         //  TODO: optimize to avoid repeated computations to obtain the current slice.
         for e in collection {
-            length = match self.try_push(e, length, capacity, allocator) {
+            //  Safety:
+            //  -   Single writer thread, as per pre-condition.
+            //  -   `length` is exactly that of the current length of the vector, per pre-condition.
+            //  -   `capacity` matches the capacity of the vector, per pre-condition.
+            let result = unsafe { self.try_push(e, length, capacity, allocator) };
+
+            length = match result {
                 Err(error) => return (length, Some(error)),
                 Ok(length) => length,
             };
@@ -332,13 +345,13 @@ impl<'a, T> BucketSlice<'a, T> {
 
         //  Safety:
         //  -   The index is guaranteed to be within bounds.
-        let bucket = self.0.get_unchecked(bucket.0);
+        let bucket = unsafe { self.0.get_unchecked(bucket.0) };
 
         //  Safety:
         //  -   The first `bucket_length` elements are initialized, due to
         //      `length` being less than the length of the vector, and
         //      `capacity` matching that of the vector.
-        bucket.get_initialized_slice(bucket_length)
+        unsafe { bucket.get_initialized_slice(bucket_length) }
     }
 
     //  Returns a slice comprising the uninitialized part of Bucket.
@@ -357,12 +370,12 @@ impl<'a, T> BucketSlice<'a, T> {
 
         //  Safety:
         //  -   The index is guaranteed to be within bounds.
-        let bucket = self.0.get_unchecked(bucket.0);
+        let bucket = unsafe { self.0.get_unchecked(bucket.0) };
 
         //  Safety:
         //  -   The length matches the number of initialized elements.
         //  -   The capacity matches the capacity of the bucket.
-        bucket.get_uninitialized_slice(length, bucket_capacity)
+        unsafe { bucket.get_uninitialized_slice(length, bucket_capacity) }
     }
 
     //  Initializes the next bucket, if necessary, returns the new number of buckets.
@@ -389,11 +402,11 @@ impl<'a, T> BucketSlice<'a, T> {
 
         //  Safety:
         //  -   Index checked to be within bounds.
-        let bucket = self.0.get_unchecked(index.0);
+        let bucket = unsafe { self.0.get_unchecked(index.0) };
 
         //  Safety:
         //  -   Exclusive access is assumed.
-        bucket.allocate(capacity, allocator)?;
+        unsafe { bucket.allocate(capacity, allocator)? };
 
         Ok(NumberBuckets(index.0 + 1))
     }
@@ -451,7 +464,7 @@ impl<T> Bucket<T> {
 
         //  Safety:
         //  -   The layout is valid.
-        let ptr = allocator.allocate(layout);
+        let ptr = unsafe { allocator.allocate(layout) };
 
         if ptr.is_null() {
             return Err(Failure::OutOfMemory);
@@ -483,7 +496,7 @@ impl<T> Bucket<T> {
                 //  Safety:
                 //  -   Cannot error, it succeeded during the allocation.
                 debug_assert!(false, "{:?} succeeded in allocation!", capacity);
-                std::hint::unreachable_unchecked()
+                unsafe { std::hint::unreachable_unchecked() }
             }
         };
 
@@ -497,7 +510,7 @@ impl<T> Bucket<T> {
         //  Safety:
         //  -   The pointer matches the pointer of the allocation.
         //  -   The layout matches the layout of the allocation.
-        allocator.deallocate(ptr as *mut u8, layout);
+        unsafe { allocator.deallocate(ptr as *mut u8, layout) };
     }
 
     //  Gets a reference to the element at index.
@@ -506,15 +519,17 @@ impl<T> Bucket<T> {
     //
     //  -   Assumes that the element at index is initialized.
     unsafe fn get_unchecked(&self, index: InnerIndex) -> &T {
-        let ptr = self.0.get().add(index.0);
+        //  Safety:
+        //  -   `index` is within bounds.
+        let ptr = unsafe { self.0.get().add(index.0) };
 
         //  Safety:
         //  -   The bucket contains at least index+1 elements.
-        let raw: &Raw<T> = &*ptr;
+        let raw: &Raw<T> = unsafe { &*ptr };
 
         //  Safety:
         //  -   The element is assumed to be initialized.
-        raw.get()
+        unsafe { raw.get() }
     }
 
     //  Gets a mutable reference to the element at index.
@@ -523,16 +538,18 @@ impl<T> Bucket<T> {
     //
     //  -   Assumes that the element at index is initialized.
     unsafe fn get_unchecked_mut(&mut self, index: InnerIndex) -> &mut T {
-        let ptr = self.0.get().add(index.0);
+        //  Safety:
+        //  -   `index` is within bounds.
+        let ptr = unsafe { self.0.get().add(index.0) };
 
         //  Safety:
         //  -   The bucket contains at least index+1 elements.
         //  -   The access is exclusive, as per &mut self.
-        let raw: &mut Raw<T> = &mut *ptr;
+        let raw: &mut Raw<T> = unsafe { &mut *ptr };
 
         //  Safety:
         //  -   The element is assumed to be initialized.
-        raw.get_mut()
+        unsafe { raw.get_mut() }
     }
 
     //  Returns a slice to the first length elements.
@@ -542,11 +559,14 @@ impl<T> Bucket<T> {
     //  -   Assumes that the first length elements are initialized.
     unsafe fn get_initialized_slice(&self, length: BucketLength) -> &[T] {
         let ptr = self.0.get();
-        let raw = &*ptr;
+
+        //  Safety:
+        //  -   Shared access to `raw`, per borrowing rules.
+        let raw = unsafe { &*ptr };
 
         //  Safety:
         //  -   The first length elements are assumed to be initialized.
-        slice::from_raw_parts(raw.as_ptr(), length.0)
+        unsafe { slice::from_raw_parts(raw.as_ptr(), length.0) }
     }
 
     //  Returns a slice to the first length elements.
@@ -559,11 +579,11 @@ impl<T> Bucket<T> {
 
         //  Safety:
         //  -   Exclusive access to `raw` is guaranteed by `&mut self`.
-        let raw: &mut Raw<T> = &mut *ptr;
+        let raw: &mut Raw<T> = unsafe { &mut *ptr };
 
         //  Safety:
         //  -   The first length elements are assumed to be initialized.
-        slice::from_raw_parts_mut(raw.as_mut_ptr(), length.0)
+        unsafe { slice::from_raw_parts_mut(raw.as_mut_ptr(), length.0) }
     }
 
     //  Returns a slice to the first length elements.
@@ -575,12 +595,14 @@ impl<T> Bucket<T> {
     unsafe fn get_uninitialized_slice(&self, length: BucketLength, capacity: BucketCapacity) -> &[Raw<T>] {
         debug_assert!(length.0 <= capacity.0);
 
-        let ptr = self.0.get().add(length.0);
+        //  Safety:
+        //  -   `length` is within bounds.
+        let ptr = unsafe { self.0.get().add(length.0) };
 
         //  Safety:
         //  -   No ongoing exclusive access, per borrowing rules.
         //  -   Length is assumed to be less than capacity.
-        slice::from_raw_parts(ptr, capacity.0 - length.0)
+        unsafe { slice::from_raw_parts(ptr, capacity.0 - length.0) }
     }
 
     //  Clears a bucket of its elements.
@@ -593,12 +615,12 @@ impl<T> Bucket<T> {
 
         //  Safety:
         //  -   The bucket is assumed to contain at least length elements.
-        let slice: &mut [Raw<T>] = slice::from_raw_parts_mut(ptr, length.0);
+        let slice: &mut [Raw<T>] = unsafe { slice::from_raw_parts_mut(ptr, length.0) };
 
         for e in slice {
             //  Safety:
             //  -   The first length elements are assumed to be initialized.
-            e.drop();
+            unsafe { e.drop() };
         }
     }
 

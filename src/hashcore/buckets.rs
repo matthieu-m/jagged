@@ -40,13 +40,13 @@ impl<T, const N: usize> BucketArray<T, N> {
         for index in 0..nb_buckets.0 {
             //  Safety:
             //  -   index is assumed to be within bounds.
-            let bucket = self.0.get_unchecked_mut(index);
+            let bucket = unsafe { self.0.get_unchecked_mut(index) };
 
             let capacity = capacity.of_bucket(BucketIndex(index));
 
             //  Safety:
             //  -   The capacity matches the bucket.
-            bucket.clear(capacity);
+            unsafe { bucket.clear(capacity) };
         }
     }
 
@@ -70,14 +70,16 @@ impl<T, const N: usize> BucketArray<T, N> {
     {
         let hash = hash(key, hook);
 
-        let entry = self.as_slice().entry(key, hash, size, capacity);
+        //  Safety:
+        //  -   `size` and `capacity` match, as per pre-conditions.
+        let entry = unsafe { self.as_slice().entry(key, hash, size, capacity) };
 
         entry
             .and_then(|e| e.occupied())
             //  Safety:
             //  -   The element is initialized, since the entry is occupied.
             //  -   The caller has exclusive access since `&mut self`.
-            .map(|e| e.get_unchecked_mut())
+            .map(|e| unsafe { e.get_unchecked_mut() })
     }
 }
 
@@ -125,11 +127,11 @@ impl<'a, T> BucketSlice<'a, T> {
 
             //  Safety:
             //  -   The index is within bounds.
-            let bucket = self.0.get_unchecked(index.0);
+            let bucket = unsafe { self.0.get_unchecked(index.0) };
 
             //  Safety:
             //  -   The capacity matches the bucket capacity.
-            bucket.deallocate(capacity, allocator);
+            unsafe { bucket.deallocate(capacity, allocator) };
         }
     }
 
@@ -158,7 +160,10 @@ impl<'a, T> BucketSlice<'a, T> {
         let target = capacity.number_buckets(total);
 
         while nb_buckets < target {
-            nb_buckets = self.push_bucket(nb_buckets, capacity, allocator)?;
+            //  Safety:
+            //  -   Single writer thread, per pre-condition.
+            //  -   `capacity` match, per pre-condition.
+            nb_buckets = unsafe { self.push_bucket(nb_buckets, capacity, allocator)? };
         }
 
         Ok(())
@@ -181,13 +186,15 @@ impl<'a, T> BucketSlice<'a, T> {
     {
         let hash = hash(key, hook);
 
-        let entry = self.entry(key, hash, size, capacity);
+        //  Safety:
+        //  -   `size` and `capacity` match, per pre-condition.
+        let entry = unsafe { self.entry(key, hash, size, capacity) };
 
         entry
             .and_then(|e| e.occupied())
             //  Safety:
             //  -   The element is initialized, since the entry is occupied.
-            .map(|e| e.get_unchecked())
+            .map(|e| unsafe { e.get_unchecked() })
     }
 
     //  Inserts the element.
@@ -221,14 +228,16 @@ impl<'a, T> BucketSlice<'a, T> {
         //  Safety:
         //  -   `size` is less than the current size of the collection.
         //  -   `capacity` matches the capacity of the collection.
-        if let Some(entry) = self.entry(element.key(), hash, size, capacity) {
+        let entry = unsafe { self.entry(element.key(), hash, size, capacity) };
+
+        if let Some(entry) = entry {
             let result = match entry {
                 //  The element was found.
                 Entry::Occupied(_) => Ok((size, Some(element))),
                 //  A location for insertion was found.
                 Entry::Vacant(location) => {
                     debug_assert!(capacity.number_buckets(size) == capacity.number_buckets(new_size));
-                    location.set(generation, element);
+                    unsafe { location.set(generation, element) };
                     Ok((new_size, None))
                 }
             };
@@ -238,10 +247,11 @@ impl<'a, T> BucketSlice<'a, T> {
 
         //  A new bucket is necessary.
 
+        let nb_buckets = capacity.number_buckets(size);
+
         //  Safety:
         //  -   Single writer thread.
-        let nb_buckets = capacity.number_buckets(size);
-        let nb_buckets = self.push_bucket(nb_buckets, capacity, hook)?;
+        let nb_buckets = unsafe { self.push_bucket(nb_buckets, capacity, hook)? };
         debug_assert!(nb_buckets == capacity.number_buckets(new_size));
 
         let last_index = BucketIndex(nb_buckets.0 - 1);
@@ -249,21 +259,23 @@ impl<'a, T> BucketSlice<'a, T> {
 
         //  Safety:
         //  -   The index is within bounds.
-        let last_bucket = self.0.get_unchecked(last_index.0);
+        let last_bucket = unsafe { self.0.get_unchecked(last_index.0) };
 
         //  Safety:
         //  -   `generation` is less than the current size of the collection.
         //  -   `capacity` matches the capacity of the collection.
-        let entry = last_bucket.entry(element.key(), hash, generation, last_capacity);
+        let entry = unsafe { last_bucket.entry(element.key(), hash, generation, last_capacity) };
 
         match entry {
             Entry::Vacant(location) => {
-                location.set(generation, element);
+                //  Safety:
+                //  -   `generation` matches.
+                unsafe { location.set(generation, element) };
                 Ok((new_size, None))
             }
             //  Safety:
             //  -   A newly allocated bucket has no element.
-            Entry::Occupied(_) => hint::unreachable_unchecked(),
+            Entry::Occupied(_) => unsafe { hint::unreachable_unchecked() },
         }
     }
 
@@ -302,7 +314,11 @@ impl<'a, T> BucketSlice<'a, T> {
 
         //  TODO: optimize to avoid repeated computations to obtain the current slice.
         for e in collection {
-            size = match self.try_insert(e, size, capacity, hooks) {
+            //  Safety:
+            //  -   `size` and `capacity` match.
+            let result = unsafe { self.try_insert(e, size, capacity, hooks) };
+
+            size = match result {
                 Err(error) => return (size, Some(error)),
                 Ok((size, _)) => size,
             };
@@ -330,15 +346,15 @@ impl<'a, T> BucketSlice<'a, T> {
 
         //  Safety:
         //  -   `bucket` is within bounds.
-        let bucket = self.0.get_unchecked(bucket.0);
+        let bucket = unsafe { self.0.get_unchecked(bucket.0) };
 
         //  Safety:
         //  -   `capacity` matches the bucket.
-        let slice = bucket.get_slice(capacity);
+        let slice = unsafe { bucket.get_slice(capacity) };
 
         //  Safety:
         //  -   `generation` is less than the current size of the collection.
-        BucketIterator::new(slice, generation)
+        unsafe { BucketIterator::new(slice, generation) }
     }
 
     //  Looks up the element, or where it could be inserted.
@@ -367,13 +383,15 @@ impl<'a, T> BucketSlice<'a, T> {
         let entry = {
             //  Safety:
             //  -   last_index is within bounds.
-            let bucket = self.0.get_unchecked(last_index.0);
+            let bucket = unsafe { self.0.get_unchecked(last_index.0) };
 
-            bucket.entry(key, hash, generation, last_capacity)
+            //  Safety:
+            //  -   `generation` and `last_capacity` match.
+            unsafe { bucket.entry(key, hash, generation, last_capacity) }
         };
 
         if entry.is_occupied() {
-            debug_assert!(entry.occupied().unwrap().get(generation).is_some());
+            debug_assert!(unsafe { entry.occupied().unwrap().get(generation).is_some() });
             return Some(entry);
         }
 
@@ -384,15 +402,19 @@ impl<'a, T> BucketSlice<'a, T> {
 
             //  Safety:
             //  -   bucket is within bounds.
-            let bucket = self.0.get_unchecked(bucket);
+            let bucket = unsafe { self.0.get_unchecked(bucket) };
 
-            if let Some(e) = bucket.find(key, hash, generation, capacity) {
-                debug_assert!(e.get(generation).is_some());
+            //  Safety:
+            //  -   `generation` and `capacity` match.
+            let e = unsafe { bucket.find(key, hash, generation, capacity) };
+
+            if let Some(e) = e {
+                debug_assert!(unsafe { e.get(generation).is_some() });
                 return Some(Entry::Occupied(e));
             }
         }
 
-        debug_assert!(entry.vacant().unwrap().get(generation).is_none());
+        debug_assert!(unsafe { entry.vacant().unwrap().get(generation).is_none() });
 
         //  No vacancy if the last bucket is already fully loaded (50%).
         let last_size = capacity.size_bucket(last_index, size);
@@ -428,11 +450,11 @@ impl<'a, T> BucketSlice<'a, T> {
 
         //  Safety:
         //  -   Index checked to be within bounds.
-        let bucket = self.0.get_unchecked(index.0);
+        let bucket = unsafe { self.0.get_unchecked(index.0) };
 
         //  Safety:
         //  -   Exclusive access is assumed.
-        bucket.allocate(capacity, allocator)?;
+        unsafe { bucket.allocate(capacity, allocator)? };
 
         Ok(NumberBuckets(index.0 + 1))
     }
@@ -534,7 +556,7 @@ impl<T> Bucket<T> {
 
         //  Safety:
         //  -   The layout is valid.
-        let ptr = allocator.allocate(layout);
+        let ptr = unsafe { allocator.allocate(layout) };
 
         if ptr.is_null() {
             return Err(Failure::OutOfMemory);
@@ -549,8 +571,11 @@ impl<T> Bucket<T> {
         for offset in 0..capacity.0 {
             //  Safety:
             //  -   The result is within bounds of the allocation.
-            let e = ptr.add(offset);
-            ptr::write(e, Element::new());
+            let e = unsafe { ptr.add(offset) };
+
+            //  Safety:
+            //  -   Exclusive access is guaranteed as it as not been leaked yet.
+            unsafe { ptr::write(e, Element::new()) };
         }
 
         Ok(())
@@ -573,7 +598,7 @@ impl<T> Bucket<T> {
                 //  Safety:
                 //  -   Cannot error, it succeeded during the allocation.
                 debug_assert!(false, "{:?} succeeded in allocation!", capacity);
-                std::hint::unreachable_unchecked()
+                unsafe { std::hint::unreachable_unchecked() }
             }
         };
 
@@ -587,7 +612,7 @@ impl<T> Bucket<T> {
         //  Safety:
         //  -   The pointer matches the pointer of the allocation.
         //  -   The layout matches the layout of the allocation.
-        allocator.deallocate(ptr as *mut u8, layout);
+        unsafe { allocator.deallocate(ptr as *mut u8, layout) };
     }
 
     //  Returns a slice of the Bucket elements.
@@ -600,7 +625,7 @@ impl<T> Bucket<T> {
 
         //  Safety:
         //  -   The capacity is assumed to match.
-        slice::from_raw_parts(ptr as *const _, capacity.0)
+        unsafe { slice::from_raw_parts(ptr as *const _, capacity.0) }
     }
 
     //  Returns a slice of the Bucket elements.
@@ -613,7 +638,7 @@ impl<T> Bucket<T> {
 
         //  Safety:
         //  -   The capacity is assumed to match.
-        slice::from_raw_parts_mut(ptr, capacity.0)
+        unsafe { slice::from_raw_parts_mut(ptr, capacity.0) }
     }
 
     //  Clears a bucket of its elements.
@@ -624,7 +649,7 @@ impl<T> Bucket<T> {
     unsafe fn clear(&mut self, capacity: BucketCapacity) {
         //  Safety:
         //  -   The capacity is assumed to match.
-        let slice = self.get_slice_mut(capacity);
+        let slice = unsafe { self.get_slice_mut(capacity) };
 
         for e in slice {
             e.drop();
@@ -651,7 +676,10 @@ impl<T> Bucket<T> {
         T::Key: Borrow<Q>,
         Q: ?Sized + Eq,
     {
-        let entry = self.entry(key, hash, generation, capacity);
+        //  Safety:
+        //  -   `generation` is less than the current size of the collection, per pre-condition.
+        //  -   `capcaity` matches the capacity of the collection, per pre-condition.
+        let entry = unsafe { self.entry(key, hash, generation, capacity) };
         entry.occupied()
     }
 
@@ -669,7 +697,9 @@ impl<T> Bucket<T> {
         T::Key: Borrow<Q>,
         Q: ?Sized + Eq,
     {
-        let slice = self.get_slice(capacity);
+        //  Safety:
+        //  -   `capacity` matches that of the collection.
+        let slice = unsafe { self.get_slice(capacity) };
         debug_assert!(slice.len() >= 2);
         debug_assert!(slice.len().count_ones() == 1);
 
@@ -679,7 +709,11 @@ impl<T> Bucket<T> {
         };
 
         for e in tail {
-            if let Some(candidate) = e.get(generation) {
+            //  Safety:
+            //  -   `generation` is the current generation.
+            let candidate = unsafe { e.get(generation) };
+
+            if let Some(candidate) = candidate {
                 if candidate.key().borrow() == key {
                     return Entry::Occupied(e);
                 }
@@ -689,7 +723,11 @@ impl<T> Bucket<T> {
         }
 
         for e in head {
-            if let Some(candidate) = e.get(generation) {
+            //  Safety:
+            //  -   `generation` is the current generation.
+            let candidate = unsafe { e.get(generation) };
+
+            if let Some(candidate) = candidate {
                 if candidate.key().borrow() == key {
                     return Entry::Occupied(e);
                 }
@@ -703,7 +741,7 @@ impl<T> Bucket<T> {
         //  -   A bucket has a capacity of at least 2.
         //  -   Ergo, either head or tail contained an empty spot.
         debug_assert!(false);
-        hint::unreachable_unchecked();
+        unsafe { hint::unreachable_unchecked() };
     }
 
     //  Computes the layout for a given capacity.

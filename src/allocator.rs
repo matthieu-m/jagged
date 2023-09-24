@@ -38,10 +38,14 @@ pub struct DefaultAllocator;
 #[cfg(feature = "with-std")]
 impl Allocator for DefaultAllocator {
     unsafe fn allocate(&self, layout: Layout) -> *mut u8 {
-        alloc::alloc(layout)
+        //  Safety:
+        //  -   Forwarding.
+        unsafe { alloc::alloc(layout) }
     }
 
     unsafe fn deallocate(&self, ptr: *mut u8, layout: Layout) {
-        alloc::dealloc(ptr, layout)
+        //  Safety:
+        //  -   Forwarding.
+        unsafe { alloc::dealloc(ptr, layout) }
     }
 }

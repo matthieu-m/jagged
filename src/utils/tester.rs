@@ -88,7 +88,9 @@ impl Allocator for TestAllocator {
 
         self.allowed.set(self.allowed.get() - 1);
 
-        let result = self.allocator.allocate(layout);
+        //  Safety:
+        //  -   Forward.
+        let result = unsafe { self.allocator.allocate(layout) };
         assert_ne!(ptr::null_mut(), result);
 
         let allocation = Allocation::new(result, layout);
@@ -98,7 +100,9 @@ impl Allocator for TestAllocator {
     }
 
     unsafe fn deallocate(&self, ptr: *mut u8, layout: Layout) {
-        self.allocator.deallocate(ptr, layout);
+        //  Safety:
+        //  -   Forward.
+        unsafe { self.allocator.deallocate(ptr, layout) };
 
         let allocation = Allocation::new(ptr, layout);
 
@@ -165,11 +169,15 @@ impl ops::Deref for TestHooks {
 
 impl Allocator for TestHooks {
     unsafe fn allocate(&self, layout: Layout) -> *mut u8 {
-        self.allocator.allocate(layout)
+        //  Safety:
+        //  -   Forward.
+        unsafe { self.allocator.allocate(layout) }
     }
 
     unsafe fn deallocate(&self, ptr: *mut u8, layout: Layout) {
-        self.allocator.deallocate(ptr, layout)
+        //  Safety:
+        //  -   Forward.
+        unsafe { self.allocator.deallocate(ptr, layout) }
     }
 }
 
@@ -279,7 +287,9 @@ impl ops::Deref for PanickyAllocator {
 
 impl Allocator for PanickyAllocator {
     unsafe fn allocate(&self, layout: Layout) -> *mut u8 {
-        let result = self.0.allocate(layout);
+        //  Safety:
+        //  -   Forward.
+        let result = unsafe { self.0.allocate(layout) };
 
         assert!(!result.is_null());
 
@@ -287,7 +297,9 @@ impl Allocator for PanickyAllocator {
     }
 
     unsafe fn deallocate(&self, ptr: *mut u8, layout: Layout) {
-        self.0.deallocate(ptr, layout);
+        //  Safety:
+        //  -   Forward.
+        unsafe { self.0.deallocate(ptr, layout) };
     }
 }
 

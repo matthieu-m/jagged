@@ -1,6 +1,7 @@
 #![cfg_attr(not(feature = "with-std"), no_std)]
 //  Lints
 #![allow(clippy::module_inception)]
+#![deny(unsafe_op_in_unsafe_fn)]
 
 //! #   The Jagged Library
 //!

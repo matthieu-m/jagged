@@ -432,7 +432,7 @@ mod tests {
         size: Size,
         capacity: Capacity,
     ) -> BucketsSharedReader<'a, T, H> {
-        BucketsSharedReader::new(buckets.as_slice(), hooks, size, capacity)
+        unsafe { BucketsSharedReader::new(buckets.as_slice(), hooks, size, capacity) }
     }
 
     unsafe fn shared_writer<'a, T, const N: usize, H>(
@@ -441,7 +441,7 @@ mod tests {
         size: Size,
         capacity: Capacity,
     ) -> BucketsSharedWriter<'a, T, H> {
-        BucketsSharedWriter::new(buckets.as_slice(), hooks, size, capacity)
+        unsafe { BucketsSharedWriter::new(buckets.as_slice(), hooks, size, capacity) }
     }
 
     unsafe fn exclusive_writer<T, const N: usize>(
@@ -449,7 +449,7 @@ mod tests {
         size: Size,
         capacity: Capacity,
     ) -> BucketsExclusiveWriter<'_, T, N> {
-        BucketsExclusiveWriter::new(buckets, size, capacity)
+        unsafe { BucketsExclusiveWriter::new(buckets, size, capacity) }
     }
 
     #[test]

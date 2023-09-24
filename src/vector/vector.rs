@@ -320,7 +320,12 @@ impl<T, const N: usize, H: VectorHooks> Vector<T, N, H> {
     /// assert_eq!(1, unsafe { *vec.get_unchecked(0) });
     /// ```
     pub unsafe fn get_unchecked(&self, i: usize) -> &T {
-        self.buckets.as_slice().get_unchecked(ElementIndex(i), self.capacity)
+        debug_assert!(i < self.length.load());
+
+        //  Safety:
+        //  -   `i` is within bounds, as per pre-condition.
+        //  -   `self.capacity` is the capacity of `self`.
+        unsafe { self.buckets.as_slice().get_unchecked(ElementIndex(i), self.capacity) }
     }
 
     /// Returns a reference to the ith element, if any.
@@ -361,7 +366,12 @@ impl<T, const N: usize, H: VectorHooks> Vector<T, N, H> {
     /// assert_eq!(3, vec[0]);
     /// ```
     pub unsafe fn get_unchecked_mut(&mut self, i: usize) -> &mut T {
-        self.buckets.get_unchecked_mut(ElementIndex(i), self.capacity)
+        debug_assert!(i < self.length.load());
+
+        //  Safety:
+        //  -   `i` is within bounds, as per pre-conditions.
+        //  -   `self.capacity` is the capacity of `self`.
+        unsafe { self.buckets.get_unchecked_mut(ElementIndex(i), self.capacity) }
     }
 
     /// Returns the ith bucket, if initialized, or an empty bucket otherwise.
@@ -657,7 +667,7 @@ impl<T, const N: usize, H: VectorHooks> Vector<T, N, H> {
         //  Safety:
         //  -   length exactly matches the length of the vector.
         //  -   single writer thread.
-        BucketsSharedWriter::new(self.buckets.as_slice(), length, self.capacity)
+        unsafe { BucketsSharedWriter::new(self.buckets.as_slice(), length, self.capacity) }
     }
 }
 

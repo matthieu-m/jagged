@@ -666,7 +666,7 @@ impl<K, V, const N: usize, H: HashHooks> HashMap<K, V, N, H> {
         //  Safety:
         //  -   `size` exactly matches the size of the collection.
         //  -   single writer thread.
-        BucketsSharedWriter::new(self.buckets.as_slice(), &self.hooks, size, self.capacity)
+        unsafe { BucketsSharedWriter::new(self.buckets.as_slice(), &self.hooks, size, self.capacity) }
     }
 }
 

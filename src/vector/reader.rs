@@ -166,7 +166,12 @@ impl<'a, T> VectorReader<'a, T> {
     /// assert_eq!(1, unsafe { *reader.get_unchecked(0) });
     /// ```
     pub unsafe fn get_unchecked(&self, i: usize) -> &T {
-        self.buckets.get_unchecked(ElementIndex(i), self.capacity)
+        debug_assert!(i < self.len());
+
+        //  Safety:
+        //  -   `i` is within bounds, as per pre-conditions.
+        //  -   `self.capacity` is the capacity of `self`.
+        unsafe { self.buckets.get_unchecked(ElementIndex(i), self.capacity) }
     }
 
     /// Returns the ith bucket, if any, or an empty bucket otherwise.

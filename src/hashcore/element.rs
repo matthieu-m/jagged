@@ -37,7 +37,7 @@ impl<T> Element<T> {
             //  Safety:
             //  -   Raw is initialized as `self.generation` is not UNINTIALIZED.
             //  -   Raw is finalized as `self.generation` is less than `current`.
-            Some(self.raw.get())
+            Some(unsafe { self.raw.get() })
         } else {
             None
         }
@@ -53,7 +53,7 @@ impl<T> Element<T> {
         //  Safety:
         //  -   Raw is initialized as `self.generation` is not UNINTIALIZED.
         //  -   Raw is finalized.
-        self.raw.get()
+        unsafe { self.raw.get() }
     }
 
     //  Gets a mutable reference the element.
@@ -69,7 +69,7 @@ impl<T> Element<T> {
         //  -   Raw is initialized as `self.generation` is not UNINTIALIZED.
         //  -   Raw is finalized.
         //  -   The caller has exclusive access.
-        self.raw.get_unchecked_mut()
+        unsafe { self.raw.get_unchecked_mut() }
     }
 
     //  Stores the element, with its generation.
@@ -84,10 +84,7 @@ impl<T> Element<T> {
         //  Safety
         //  -   Single writer.
         //  -   No other thread reads self.raw until self.generation is set.
-        let raw: *mut Raw<T> = &self.raw as *const _ as *mut _;
-        let raw: &mut Raw<T> = &mut *raw;
-
-        raw.write(element);
+        unsafe { self.raw.write(element) };
 
         self.generation.store(current.0);
     }
@@ -95,10 +92,11 @@ impl<T> Element<T> {
     //  Drops the element, if any.
     pub fn drop(&mut self) {
         if self.is_initialized() {
+            self.generation.store(UNINTIALIZED);
+
             //  Safety:
             //  -   The element is initialized.
             unsafe { self.raw.drop() };
-            self.generation.store(UNINTIALIZED);
         }
     }
 }

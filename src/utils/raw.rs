@@ -23,7 +23,11 @@ impl<T> Raw<T> {
     //
     //  -   Assumes that the value is initialized.
     pub unsafe fn get(&self) -> &T {
-        &*self.as_ptr()
+        //  Safety:
+        //  -   The pointer is correctly aligned, per layout.
+        //  -   The value is initialized, per pre-condition.
+        //  -   No exclusive reference to the value exists, per borrowing rules.
+        unsafe { &*self.as_ptr() }
     }
 
     //  Gets a mutable reference to the value.
@@ -32,7 +36,11 @@ impl<T> Raw<T> {
     //
     //  -   Assumes that the value is initialized.
     pub unsafe fn get_mut(&mut self) -> &mut T {
-        &mut *self.as_mut_ptr()
+        //  Safety:
+        //  -   The pointer is correctly aligned, per layout.
+        //  -   The value is initialized, per pre-condition.
+        //  -   No reference to the value exists, per borrowing rules.
+        unsafe { &mut *self.as_mut_ptr() }
     }
 
     //  Gets an exclusive reference to the value from a shared reference.
@@ -70,8 +78,6 @@ impl<T> Raw<T> {
     //
     //  -   Assumes that the caller has exclusive access.
     pub unsafe fn as_unchecked_mut_ptr(&self) -> *mut T {
-        #![deny(unsafe_op_in_unsafe_fn)]
-
         //  Safety:
         //  -   The caller has exclusive access, per pre-condition.
         unsafe { self.maybe_unchecked_mut().as_mut_ptr() }
@@ -98,7 +104,10 @@ impl<T> Raw<T> {
     //
     //  -   Assumes that the value is initialized.
     pub unsafe fn drop(&mut self) {
-        ptr::drop_in_place(self.as_mut_ptr());
+        //  Safety:
+        //  -   The value is initialized, per pre-condition.
+        //  -   No reference to the value exists, per borrowing rules.
+        unsafe { ptr::drop_in_place(self.as_mut_ptr()) };
     }
 
     //  Gets a reference to the MaybeUninit field.
@@ -115,8 +124,6 @@ impl<T> Raw<T> {
     //  -   Assumes that the caller has exclusive access.
     #[allow(clippy::mut_from_ref)]
     unsafe fn maybe_unchecked_mut(&self) -> &mut mem::MaybeUninit<T> {
-        #![deny(unsafe_op_in_unsafe_fn)]
-
         //  Safety:
         //  -   Exclusive access, per pre-condition.
         unsafe { &mut *self.0.get() }

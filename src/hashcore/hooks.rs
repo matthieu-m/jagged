@@ -30,11 +30,15 @@ pub struct DefaultHashHooks(allocator::DefaultAllocator, hash_map::RandomState);
 #[cfg(feature = "with-std")]
 impl allocator::Allocator for DefaultHashHooks {
     unsafe fn allocate(&self, layout: allocator::Layout) -> *mut u8 {
-        self.0.allocate(layout)
+        //  Safety:
+        //  -   Forwarding.
+        unsafe { self.0.allocate(layout) }
     }
 
     unsafe fn deallocate(&self, ptr: *mut u8, layout: allocator::Layout) {
-        self.0.deallocate(ptr, layout)
+        //  Safety:
+        //  -   Forwarding.
+        unsafe { self.0.deallocate(ptr, layout) }
     }
 }
 

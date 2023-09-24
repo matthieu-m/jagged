@@ -159,7 +159,11 @@ impl<'a, T> VectorSnapshot<'a, T> {
     /// assert_eq!(1, unsafe { *snapshot.get_unchecked(0) });
     /// ```
     pub unsafe fn get_unchecked(&self, i: usize) -> &T {
-        self.reader.get_unchecked(ElementIndex(i))
+        debug_assert!(i < self.len());
+
+        //  Safety:
+        //  -   `i` is within bounds, as per pre-conditions.
+        unsafe { self.reader.get_unchecked(ElementIndex(i)) }
     }
 
     /// Returns the ith bucket, if any, or an empty bucket otherwise.
